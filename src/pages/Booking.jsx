@@ -81,15 +81,28 @@ export default function Booking() {
     return 'ledig'
   }
 
-  function getLedigeTider(dato) {
+function getLedigeTider(dato) {
     if (!dato) return []
     const ugedag = new Date(dato + 'T12:00:00').getDay()
     const slots = getSlotsForDay(ugedag)
-    const optagetSlots = optagedeDatoer
-      .filter(s => s.dato === dato)
-      .map(s => s.tidspunkt ? String(s.tidspunkt).slice(0, 5) : null)
-      .filter(Boolean)
-    return slots.filter(s => !optagetSlots.includes(s))
+    const optagedeSager = optagedeDatoer.filter(s => s.dato === dato)
+    
+    // Blokér starttidspunkt + næste time (1,5 time sag)
+    const blokeredeTider = new Set()
+    optagedeSager.forEach(s => {
+      const tid = s.tidspunkt ? String(s.tidspunkt).slice(0, 5) : null
+      if (!tid) return
+      blokeredeTider.add(tid)
+      // Blokér også næste slot (fordi sagen tager 1,5 time)
+      const [h] = tid.split(':').map(Number)
+      blokeredeTider.add(`${String(h + 1).padStart(2, '0')}:00`)
+    })
+    
+    // En slot er kun ledig hvis hverken den selv eller næste slot er blokeret
+    return slots.filter((s, i) => {
+      const næsteSlot = slots[i + 1]
+      return !blokeredeTider.has(s) && (!næsteSlot || !blokeredeTider.has(næsteSlot))
+    })
   }
 
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
