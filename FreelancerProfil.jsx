@@ -55,7 +55,12 @@ export default function FreelancerProfil() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
             <span className={`badge ${freelancer.aktiv !== false ? 'badge-active' : 'badge-new'}`}>{freelancer.aktiv !== false ? 'Aktiv' : 'Deaktiveret'}</span>
-            {freelancer.aktiv !== false && <button className="btn btn-red btn-sm" onClick={deaktiver}>Deaktiver</button>}
+           {freelancer.aktiv !== false && <button className="btn btn-red btn-sm" onClick={deaktiver}>Deaktiver</button>}
+<button className="btn btn-red btn-sm" onClick={async () => {
+  if (!confirm('Slet freelancer permanent? Dette kan ikke fortrydes.')) return
+  await supabase.from('freelancere').delete().eq('id', id)
+  navigate('/freelancere')
+}}>🗑 Slet permanent</button>
           </div>
         </div>
       </div>
