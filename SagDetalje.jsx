@@ -160,7 +160,13 @@ export default function SagDetalje() {
 
           {/* MINDWORKING */}
           <div className="card">
-            <div className="section-hd">Mindworking</div>
+            <div className="section-hd">Mindworking</div><div style={{ marginBottom: 12 }}>
+  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: 5 }}>Mindworking sagsnummer</label>
+  <div style={{ display: 'flex', gap: 8 }}>
+    <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. MW-2024-1234" style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--brd)', fontSize: 13 }} />
+    <button className="btn btn-primary btn-sm" onClick={saveMwNummer}>Gem</button>
+  </div>
+</div>
             <div className="form-group" style={{ marginBottom: 10 }}>
               <label>Mindworking sagsnummer</label>
               <div style={{ display: 'flex', gap: 8 }}>
