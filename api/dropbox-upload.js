@@ -1,7 +1,7 @@
 export const config = {
   api: {
     bodyParser: false,
-    responseLimit: '4.5gb',
+    responseLimit: false,
     maxDuration: 300,
   },
 }
@@ -46,7 +46,6 @@ export default async function handler(req, res) {
       return res.status(r.status).json(await r.json())
     }
 
-    // Upload actions – stream direkte til Dropbox
     const uploadUrls = {
       upload: 'https://content.dropboxapi.com/2/files/upload',
       start: 'https://content.dropboxapi.com/2/files/upload_session/start',
@@ -77,7 +76,7 @@ export default async function handler(req, res) {
     return res.status(r.status).end()
 
   } catch (e) {
-    console.error('Dropbox API fejl:', e)
+    console.error('Dropbox fejl:', e)
     res.status(500).json({ error: e.message })
   }
 }
