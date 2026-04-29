@@ -17,7 +17,7 @@ export default function Sager() {
   useEffect(() => { fetch() }, [])
 
   async function fetch() {
-    const { data } = await supabase.from('sager').select('*, kunder(navn), profiles(full_name)').order('dato', { ascending: false })
+    const { data } = await supabase.from('sager').select('*, kunder(navn), profiles(full_name)').order('created_at', { ascending: false })
     setSager(data || []); setLoading(false)
   }
 
