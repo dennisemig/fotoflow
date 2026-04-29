@@ -42,10 +42,7 @@ export default function SagDetalje() {
   async function fetchKunder() { const { data } = await supabase.from('kunder').select('id, navn').order('navn'); setKunder(data || []) }
   async function fetchUploads() { const { data } = await supabase.from('uploads').select('*').eq('sag_id', id).order('uploaded_at', { ascending: false }); setUploads(data || []) }
 
-  async function dbxProxy(action, apiArg, body) {
-    const headers = { 'Action': action }
-    if (apiArg) headers['Dropbox-API-Arg'] = JSON.stringify(apiArg)
-    if (body instanceof Buffer || body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+ if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
       headers['Content-Type'] = 'application/octet-stream'
     } else {
       headers['Content-Type'] = 'application/json'
