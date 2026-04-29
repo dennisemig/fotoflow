@@ -12,6 +12,7 @@ import Freelancere from './pages/Freelancere'
 import FreelancerProfil from './pages/FreelancerProfil'
 import Koersel from './pages/Koersel'
 import Pakker from './pages/Pakker'
+import Bookinger from './pages/Bookinger'
 import Indstillinger from './pages/Indstillinger'
 import Booking from './pages/Booking'
 
@@ -43,6 +44,7 @@ function AppRoutes() {
         <Route path="freelancere/:id" element={<FreelancerProfil />} />
         <Route path="koersel" element={<Koersel />} />
         <Route path="pakker" element={<Pakker />} />
+        <Route path="bookinger" element={<Bookinger />} />
         <Route path="indstillinger" element={<Indstillinger />} />
       </Route>
     </Routes>
