@@ -1,97 +1,45 @@
-// api/send-notification.js
-// Vercel Serverless Function – kører server-side
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  const { type, mægler } = req.body
+  const KEY = process.env.RESEND_API_KEY
+  const FROM = `VaniaGraphics <${process.env.RESEND_FROM || 'dennis@vaniagraphics.dk'}>`
+  const APP_URL = process.env.VITE_APP_URL || 'https://fotoflow-theta.vercel.app'
 
-  const { type, sagId, freelancerId, mægler } = req.body
-  const RESEND_API_KEY = process.env.RESEND_API_KEY
-  const FROM = process.env.RESEND_FROM || 'dennis@vaniagraphics.dk'
-
-  let emailData = {}
-
-  if (type === 'freelancer_booking') {
-    emailData = {
-      from: `VaniaGraphics <${FROM}>`,
-      to: mægler?.email || 'freelancer@example.dk',
-      subject: `Ny sag tildelt – ${mægler?.adresse || 'Se detaljer'}`,
-      html: `
-        <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px">
-          <div style="background:#3A4A5A;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0">
-            <div style="font-size:18px;font-weight:700">📷 VaniaGraphics</div>
-            <div style="opacity:0.75;font-size:13px;margin-top:2px">Ny sag tildelt</div>
-          </div>
-          <div style="background:#fff;border:0.5px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 10px 10px">
-            <p>Hej,</p>
-            <p>Du er booket på en ny fotograferingssag:</p>
-            <div style="background:#f4f5f7;border-radius:8px;padding:16px;margin:16px 0">
-              <div style="margin-bottom:8px"><strong>Adresse:</strong> ${mægler?.adresse || '—'}</div>
-              <div style="margin-bottom:8px"><strong>Dato:</strong> ${mægler?.dato || '—'}</div>
-              <div><strong>Tidspunkt:</strong> ${mægler?.tidspunkt || '—'}</div>
-            </div>
-            <p>Log ind for at se alle detaljer og uploade dine billeder:</p>
-            <a href="${process.env.VITE_APP_URL}/freelancer" style="display:inline-block;background:#3A4A5A;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">Gå til sagen →</a>
-            <p style="margin-top:20px;font-size:12px;color:#6b7280">Med venlig hilsen,<br>Dennis – VaniaGraphics</p>
-          </div>
-        </div>
-      `
-    }
-  } else if (type === 'levering') {
-    emailData = {
-      from: `VaniaGraphics <${FROM}>`,
-      to: mægler?.email,
-      subject: `Dine billeder er klar – ${mægler?.adresse}`,
-      html: `
-        <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px">
-          <div style="background:#3A4A5A;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0">
-            <div style="font-size:18px;font-weight:700">📷 VaniaGraphics</div>
-            <div style="opacity:0.75;font-size:13px;margin-top:2px">Dine billeder er klar</div>
-          </div>
-          <div style="background:#fff;border:0.5px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 10px 10px">
-            <p>Hej ${mægler?.navn || ''},</p>
-            <p>Billederne fra <strong>${mægler?.adresse}</strong> er nu redigeret og klar.</p>
-            <p>Du kan se et preview her – del gerne linket med sælger:</p>
-            <a href="${process.env.VITE_APP_URL}/preview/${mægler?.previewId}" style="display:inline-block;background:#3A4A5A;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">Se billeder →</a>
-            <p style="margin-top:8px;font-size:12px;color:#6b7280">Billederne er samtidig leveret direkte i dit mæglersystem via Mindworking.</p>
-            <p style="margin-top:20px;font-size:12px;color:#6b7280">Med venlig hilsen,<br>Dennis – VaniaGraphics</p>
-          </div>
-        </div>
-      `
-    }
-  } else if (type === 'booking_bekraeft') {
-    emailData = {
-      from: `VaniaGraphics <${FROM}>`,
-      to: mægler?.email,
-      subject: `Booking bekræftet – ${mægler?.adresse}`,
-      html: `
-        <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px">
-          <div style="background:#2e7d4f;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0">
-            <div style="font-size:18px;font-weight:700">✓ Booking bekræftet</div>
-          </div>
-          <div style="background:#fff;border:0.5px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 10px 10px">
-            <p>Hej ${mægler?.navn || ''},</p>
-            <p>Din booking er bekræftet:</p>
-            <div style="background:#f4f5f7;border-radius:8px;padding:16px;margin:16px 0">
-              <div style="margin-bottom:8px"><strong>Adresse:</strong> ${mægler?.adresse}</div>
-              <div style="margin-bottom:8px"><strong>Dato:</strong> ${mægler?.dato}</div>
-              <div><strong>Pakke:</strong> ${mægler?.pakke}</div>
-            </div>
-            <p style="font-size:12px;color:#6b7280">Med venlig hilsen,<br>Dennis – VaniaGraphics</p>
-          </div>
-        </div>
-      `
+  const emails = {
+    freelancer_booking: {
+      to: mægler?.email, subject: `Ny sag tildelt – ${mægler?.adresse}`,
+      html: `<div style="font-family:system-ui;max-width:520px;margin:0 auto"><div style="background:#3A4A5A;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0"><b style="font-size:18px">📷 VaniaGraphics</b><div style="opacity:.75;font-size:13px">Ny sag tildelt</div></div><div style="background:#fff;border:1px solid #e5e7eb;padding:24px;border-radius:0 0 10px 10px"><p>Hej ${mægler?.navn || ''},</p><p style="margin:12px 0">Du er booket på en ny fotograferingssag:</p><div style="background:#f4f5f7;border-radius:8px;padding:16px;margin:16px 0"><div style="margin-bottom:6px"><b>Adresse:</b> ${mægler?.adresse}</div><div style="margin-bottom:6px"><b>Dato:</b> ${mægler?.dato}</div><div><b>Tidspunkt:</b> ${mægler?.tidspunkt || 'Aftales'}</div></div><a href="${APP_URL}/freelancer" style="display:inline-block;background:#3A4A5A;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Log ind og se sagen →</a><p style="margin-top:20px;font-size:12px;color:#6b7280">Med venlig hilsen,<br>Dennis – VaniaGraphics</p></div></div>`
+    },
+    freelancer_invitation: {
+      to: mægler?.email, subject: 'Du er inviteret som freelancer – VaniaGraphics',
+      html: `<div style="font-family:system-ui;max-width:520px;margin:0 auto"><div style="background:#3A4A5A;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0"><b style="font-size:18px">📷 VaniaGraphics</b><div style="opacity:.75;font-size:13px">Invitation som freelancer</div></div><div style="background:#fff;border:1px solid #e5e7eb;padding:24px;border-radius:0 0 10px 10px"><p>Hej ${mægler?.navn},</p><p style="margin:12px 0">Du er blevet tilføjet som freelancerfotograf hos VaniaGraphics. Klik på linket herunder for at oprette din adgangskode og komme i gang.</p><a href="${APP_URL}/login" style="display:inline-block;background:#3A4A5A;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Opret din adgang →</a><p style="margin-top:12px;font-size:12px;color:#6b7280">Har du spørgsmål? Kontakt Dennis på dennis@vaniagraphics.dk</p><p style="margin-top:20px;font-size:12px;color:#6b7280">Med venlig hilsen,<br>Dennis – VaniaGraphics</p></div></div>`
+    },
+    ny_booking: {
+      to: process.env.RESEND_FROM, subject: `⚡ Ny booking fra mægler – ${mægler?.adresse}`,
+      html: `<div style="font-family:system-ui;max-width:520px;margin:0 auto"><div style="background:#2e7d4f;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0"><b style="font-size:18px">🔔 Ny booking!</b></div><div style="background:#fff;border:1px solid #e5e7eb;padding:24px;border-radius:0 0 10px 10px"><div style="background:#f4f5f7;border-radius:8px;padding:16px"><div style="margin-bottom:6px"><b>Adresse:</b> ${mægler?.adresse}</div><div style="margin-bottom:6px"><b>Dato:</b> ${mægler?.dato}</div><div style="margin-bottom:6px"><b>Mægler:</b> ${mægler?.maegler_navn} · ${mægler?.maegler_firma || ''}</div><div style="margin-bottom:6px"><b>Email:</b> ${mægler?.maegler_email}</div><div style="margin-bottom:6px"><b>Pakke:</b> ${mægler?.pakke}</div><div><b>Total:</b> ${mægler?.total?.toLocaleString('da-DK') || '—'} kr</div></div><a href="${APP_URL}" style="display:inline-block;background:#3A4A5A;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:16px">Gå til systemet →</a></div></div>`
+    },
+    levering: {
+      to: mægler?.email, subject: `Dine billeder er klar – ${mægler?.adresse}`,
+      html: `<div style="font-family:system-ui;max-width:520px;margin:0 auto"><div style="background:#3A4A5A;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0"><b style="font-size:18px">📷 VaniaGraphics</b><div style="opacity:.75;font-size:13px">Dine billeder er klar</div></div><div style="background:#fff;border:1px solid #e5e7eb;padding:24px;border-radius:0 0 10px 10px"><p>Hej ${mægler?.navn || ''},</p><p style="margin:12px 0">Billederne fra <b>${mægler?.adresse}</b> er nu redigeret og klar til levering.</p><p>Du kan se et preview her – del gerne linket med sælger til gennemsyn:</p><a href="${mægler?.previewLink || APP_URL}" style="display:inline-block;background:#3A4A5A;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;margin:12px 0">Se billeder →</a><p style="font-size:12px;color:#6b7280">Billederne er samtidig leveret direkte i dit mæglersystem via Mindworking.</p><p style="margin-top:20px;font-size:12px;color:#6b7280">Med venlig hilsen,<br>Dennis – VaniaGraphics</p></div></div>`
+    },
+    booking_bekraeft: {
+      to: mægler?.email, subject: `✓ Booking bekræftet – ${mægler?.adresse}`,
+      html: `<div style="font-family:system-ui;max-width:520px;margin:0 auto"><div style="background:#2e7d4f;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0"><b style="font-size:18px">✓ Booking bekræftet</b></div><div style="background:#fff;border:1px solid #e5e7eb;padding:24px;border-radius:0 0 10px 10px"><p>Hej ${mægler?.maegler_navn || ''},</p><p style="margin:12px 0">Din booking er bekræftet:</p><div style="background:#f4f5f7;border-radius:8px;padding:16px"><div style="margin-bottom:6px"><b>Adresse:</b> ${mægler?.adresse}</div><div style="margin-bottom:6px"><b>Dato:</b> ${mægler?.dato}</div><div><b>Pakke:</b> ${mægler?.pakke}</div></div><p style="margin-top:20px;font-size:12px;color:#6b7280">Med venlig hilsen,<br>Dennis – VaniaGraphics</p></div></div>`
     }
   }
 
+  const emailData = emails[type]
+  if (!emailData || !emailData.to) return res.status(400).json({ error: 'Invalid type or missing email' })
+
   try {
-    const response = await fetch('https://api.resend.com/emails', {
+    const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(emailData)
+      headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: FROM, ...emailData })
     })
-    const data = await response.json()
+    const data = await r.json()
     res.status(200).json({ success: true, id: data.id })
-  } catch (error) {
-    res.status(500).json({ error: error.message })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
   }
 }
