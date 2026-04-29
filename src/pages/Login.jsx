@@ -27,7 +27,7 @@ export default function Login() {
         <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--muted)', marginBottom: 28 }}>Log ind på dit system</div>
         {error && <div className="warn-box" style={{ marginBottom: 14 }}>{error}</div>}
         <form onSubmit={handle}>
-          <div className="form-group"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="dennis@vaniagraphics.dk" required /></div>
+          <div className="form-group"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="dennis@vaniagraphics.dk" required autoFocus /></div>
           <div className="form-group"><label>Adgangskode</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
           <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} disabled={loading}>
             {loading ? 'Logger ind...' : 'Log ind'}

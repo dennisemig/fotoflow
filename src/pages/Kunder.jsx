@@ -12,15 +12,17 @@ export default function Kunder() {
   const { toasts, toast } = useToast()
 
   useEffect(() => { fetch() }, [])
+
   async function fetch() {
-    const { data } = await supabase.from('kunder').select('*').order('navn')
+    const { data, error } = await supabase.from('kunder').select('*').order('navn')
+    if (error) console.error('Kunder fejl:', error)
     setKunder(data || []); setLoading(false)
   }
 
   const filtered = kunder.filter(k =>
-    k.navn?.toLowerCase().includes(search.toLowerCase()) ||
-    k.email?.toLowerCase().includes(search.toLowerCase()) ||
-    k.telefon?.includes(search)
+    (k.navn || '').toLowerCase().includes(search.toLowerCase()) ||
+    (k.email || '').toLowerCase().includes(search.toLowerCase()) ||
+    (k.telefon || '').includes(search)
   )
 
   return (
@@ -32,10 +34,11 @@ export default function Kunder() {
         <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Opret kunde</button>
       </div>
       <div className="card">
-        {loading ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>Indlæser...</div> : (
-          <div style={{ overflowX: 'auto' }}>
+        {loading ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>Indlæser...</div>
+          : filtered.length === 0 ? <div className="empty-state"><div className="empty-icon">👥</div>Ingen kunder endnu – opret din første!</div>
+          : <div style={{ overflowX: 'auto' }}>
             <table>
-              <thead><tr><th>Navn</th><th>Telefon</th><th>Email</th><th>Tags</th><th>Handling</th></tr></thead>
+              <thead><tr><th>Navn</th><th>Telefon</th><th>Email</th><th>Tags</th><th></th></tr></thead>
               <tbody>
                 {filtered.map(k => (
                   <tr key={k.id} onClick={() => navigate(`/kunder/${k.id}`)}>
@@ -46,13 +49,10 @@ export default function Kunder() {
                     <td onClick={e => e.stopPropagation()}><button className="btn btn-outline btn-sm" onClick={() => navigate(`/kunder/${k.id}`)}>Se profil</button></td>
                   </tr>
                 ))}
-                {filtered.length === 0 && !loading && (
-                  <tr><td colSpan={5}><div className="empty-state"><div className="empty-icon">👥</div>Ingen kunder endnu – opret din første!</div></td></tr>
-                )}
               </tbody>
             </table>
           </div>
-        )}
+        }
       </div>
       {showModal && <OpretKundeModal onClose={() => setShowModal(false)} onSaved={() => { setShowModal(false); fetch(); toast('✓ Kunde oprettet!') }} toast={toast} />}
     </div>
@@ -68,12 +68,12 @@ function OpretKundeModal({ onClose, onSaved, toast }) {
     if (!form.navn.trim()) { toast('Navn er påkrævet', 'error'); return }
     setSaving(true)
     const { error } = await supabase.from('kunder').insert([{
-      navn: form.navn, email: form.email, telefon: form.telefon, noter: form.noter,
+      navn: form.navn, email: form.email || null, telefon: form.telefon || null,
+      noter: form.noter || null,
       tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : []
     }])
-    setSaving(false)
-    if (error) toast('Fejl ved oprettelse: ' + error.message, 'error')
-    else onSaved()
+    if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
+    setSaving(false); onSaved()
   }
 
   return (
@@ -85,7 +85,7 @@ function OpretKundeModal({ onClose, onSaved, toast }) {
           <div className="form-group"><label>Email</label><input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@eksempel.dk" /></div>
           <div className="form-group"><label>Telefon</label><input value={form.telefon} onChange={e => set('telefon', e.target.value)} placeholder="+45 xx xx xx xx" /></div>
         </div>
-        <div className="form-group"><label>Tags (kommasepareret)</label><input value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="Portræt, Fast kunde, Bryllup..." /></div>
+        <div className="form-group"><label>Tags (kommasepareret)</label><input value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="Portræt, Fast kunde, Ejendomsmægler..." /></div>
         <div className="form-group"><label>Noter</label><textarea rows={3} value={form.noter} onChange={e => set('noter', e.target.value)} placeholder="Interne noter om kunden..." /></div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>Annuller</button>

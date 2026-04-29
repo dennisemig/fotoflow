@@ -11,16 +11,16 @@ import Kalender from './pages/Kalender'
 import Freelancere from './pages/Freelancere'
 import FreelancerProfil from './pages/FreelancerProfil'
 import Koersel from './pages/Koersel'
-import Indstillinger from './pages/Indstillinger'
 import Pakker from './pages/Pakker'
+import Indstillinger from './pages/Indstillinger'
 import Booking from './pages/Booking'
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 12, color: 'var(--muted)' }}>
-      <div style={{ fontSize: 28 }}>📷</div>
-      <div>Indlæser VaniaGraphics...</div>
+      <div style={{ fontSize: 32 }}>📷</div>
+      <div style={{ fontWeight: 600, color: 'var(--pr)' }}>VaniaGraphics indlæser...</div>
     </div>
   )
   if (!user) return <Navigate to="/login" replace />
