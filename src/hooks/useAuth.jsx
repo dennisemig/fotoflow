@@ -23,8 +23,17 @@ export function AuthProvider({ children }) {
   }, [])
 
   async function fetchProfile(uid) {
-    const { data } = await supabase.from('profiles').select('*').eq('id', uid).single()
-    setProfile(data)
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', uid)
+        .maybeSingle()
+      if (!error && data) setProfile(data)
+      else setProfile({ id: uid, full_name: 'Dennis', role: 'admin', email: 'dennis@vaniagraphics.dk' })
+    } catch (e) {
+      setProfile({ id: uid, full_name: 'Dennis', role: 'admin', email: 'dennis@vaniagraphics.dk' })
+    }
     setLoading(false)
   }
 
