@@ -43,10 +43,12 @@ export default function Kalender() {
   const todayStr = new Date().toISOString().split('T')[0]
   const monthName = new Date(year, month, 1).toLocaleString('da-DK', { month: 'long', year: 'numeric' })
 
-  const sagsForDay = (day) => {
-    const d = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    return sager.filter(s => s.dato === d)
-  }
+const sagsForDay = (day) => {
+  const d = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const result = sager.filter(s => s.dato === d)
+  if (day === 30) console.log('Dag 30:', d, 'Sager:', sager.map(s => s.dato), 'Match:', result)
+  return result
+}
 
   const todayDay = new Date().getDate()
   const todayMonth = new Date().getMonth()
