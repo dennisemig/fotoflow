@@ -71,7 +71,12 @@ export default function SagDetalje() {
         if (file.size <= CHUNK) {
           // Enkelt upload for filer under 148MB
           const buf = await file.arrayBuffer()
-          const r = await fetch('https://content.dropboxapi.com/2/files/upload', {
+         const r = await fetch('/api/dropbox-upload', {
+  method: 'POST',
+  headers: {
+    'Action': 'upload',
+    'Dropbox-API-Arg': JSON.stringify({ path, mode: 'overwrite', autorename: true }),
+  },
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${dbxToken}`,
