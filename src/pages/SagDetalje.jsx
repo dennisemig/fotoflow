@@ -45,7 +45,7 @@ export default function SagDetalje() {
   async function dbxProxy(action, apiArg, body) {
     const headers = { 'Action': action }
     if (apiArg) headers['Dropbox-API-Arg'] = JSON.stringify(apiArg)
-    if (body instanceof Buffer || body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+    if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
       headers['Content-Type'] = 'application/octet-stream'
     } else {
       headers['Content-Type'] = 'application/json'
