@@ -21,10 +21,23 @@ export default function FreelancerProfil() {
     toast('✓ Rettigheder gemt')
   }
 
+  async function sletFreelancer() {
+    if (!confirm('Slet freelancer permanent? Dette kan ikke fortrydes.')) return
+    await supabase.from('freelancere').delete().eq('id', id)
+    toast('Freelancer slettet')
+    navigate('/freelancere')
+  }
+
   async function deaktiver() {
     await supabase.from('freelancere').update({ aktiv: false }).eq('id', id)
     setFreelancer(f => ({ ...f, aktiv: false }))
     toast('Freelancer deaktiveret')
+  }
+
+  async function aktiver() {
+    await supabase.from('freelancere').update({ aktiv: true }).eq('id', id)
+    setFreelancer(f => ({ ...f, aktiv: true }))
+    toast('Freelancer aktiveret')
   }
 
   if (!freelancer) return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>Indlæser...</div>
@@ -44,7 +57,11 @@ export default function FreelancerProfil() {
   return (
     <div>
       <ToastContainer toasts={toasts} />
-      <div className="back-link" onClick={() => navigate('/freelancere')}>← Tilbage til freelancere</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div className="back-link" style={{ margin: 0 }} onClick={() => navigate('/freelancere')}>← Tilbage til freelancere</div>
+        <button className="btn btn-red btn-sm" onClick={sletFreelancer}>🗑 Slet freelancer</button>
+      </div>
+
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--pr)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700 }}>{initials(freelancer.navn)}</div>
@@ -55,7 +72,10 @@ export default function FreelancerProfil() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
             <span className={`badge ${freelancer.aktiv !== false ? 'badge-active' : 'badge-new'}`}>{freelancer.aktiv !== false ? 'Aktiv' : 'Deaktiveret'}</span>
-            {freelancer.aktiv !== false && <button className="btn btn-red btn-sm" onClick={deaktiver}>Deaktiver</button>}
+            {freelancer.aktiv !== false
+              ? <button className="btn btn-outline btn-sm" onClick={deaktiver}>Deaktiver</button>
+              : <button className="btn btn-green btn-sm" onClick={aktiver}>Aktiver igen</button>
+            }
           </div>
         </div>
       </div>
@@ -63,7 +83,8 @@ export default function FreelancerProfil() {
       <div className="grid2">
         <div className="card">
           <div className="section-hd">Bookede sager ({sager.length})</div>
-          {sager.length === 0 ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>Ingen sager booket endnu</div>
+          {sager.length === 0
+            ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>Ingen sager booket endnu</div>
             : sager.map(s => (
               <div key={s.id} onClick={() => navigate(`/sager/${s.id}`)}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '.5px solid var(--brd)', cursor: 'pointer' }}>
@@ -84,7 +105,7 @@ export default function FreelancerProfil() {
             <div key={r.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '.5px solid var(--brd)' }}>
               <div><div style={{ fontWeight: 500, fontSize: 13 }}>{r.lbl}</div><div style={{ fontSize: 12, color: 'var(--muted)' }}>{r.sub}</div></div>
               <label className="toggle">
-                <input type="checkbox" checked={!!freelancer[r.key]} onChange={e => { const upd = { [r.key]: e.target.checked }; setFreelancer(f => ({ ...f, ...upd })) }} />
+                <input type="checkbox" checked={!!freelancer[r.key]} onChange={e => setFreelancer(f => ({ ...f, [r.key]: e.target.checked }))} />
                 <span className="tslider"></span>
               </label>
             </div>

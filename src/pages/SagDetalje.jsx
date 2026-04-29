@@ -47,6 +47,13 @@ export default function SagDetalje() {
     setSag(s => ({ ...s, status })); toast('✓ Status opdateret')
   }
 
+  async function sletSag() {
+    if (!confirm('Slet denne sag permanent? Dette kan ikke fortrydes.')) return
+    await supabase.from('sager').delete().eq('id', id)
+    toast('Sag slettet')
+    navigate('/sager')
+  }
+
   async function bookFreelancer(fId) {
     const fl = freelancere.find(f => f.id === fId)
     await supabase.from('sager').update({ freelancer_id: fId }).eq('id', id)
@@ -73,7 +80,11 @@ export default function SagDetalje() {
   return (
     <div>
       <ToastContainer toasts={toasts} />
-      <div className="back-link" onClick={() => navigate('/sager')}>← Tilbage til sager</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div className="back-link" style={{ margin: 0 }} onClick={() => navigate('/sager')}>← Tilbage til sager</div>
+        <button className="btn btn-red btn-sm" onClick={sletSag}>🗑 Slet sag</button>
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div className="page-title" style={{ margin: 0 }}>{sag.adresse}</div>
         <span className={`badge badge-${badgeClass(sag.status)}`}>{statusLabel(sag.status)}</span>
