@@ -110,7 +110,7 @@ export default function SagDetalje() {
         const sagNavn = sag?.adresse?.replace(/[^a-zA-Z0-9æøåÆØÅ\s]/g, '_') || id
         const path = `/VaniaGraphics/Sager/${sagNavn}/${file.name}`
 
-        const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
+        const response = await fetch('/api/dropbox-upload', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${dbxToken}`,
@@ -156,10 +156,10 @@ export default function SagDetalje() {
 
   async function getDropboxLink(path) {
     try {
-      const r = await fetch('https://api.dropboxapi.com/2/files/get_temporary_link', {
+      const r = await fetch('/api/dropbox-link', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${dbxToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path })
+        body: JSON.stringify({ path, action: 'link' })
       })
       const d = await r.json()
       if (d.link) window.open(d.link, '_blank')
@@ -172,10 +172,10 @@ export default function SagDetalje() {
     if (!confirm(`Slet ${upload.filnavn}?`)) return
     try {
       if (dbxToken) {
-        await fetch('https://api.dropboxapi.com/2/files/delete_v2', {
+        await fetch('/api/dropbox-link', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${dbxToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: upload.dropbox_path })
+          body: JSON.stringify({ path: upload.dropbox_path, action: 'delete' })
         })
       }
       await supabase.from('uploads').delete().eq('id', upload.id)
