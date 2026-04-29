@@ -4,6 +4,29 @@ import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
+const BBR_TOKEN = 'CPbVQka4R26OfpgOBMBi3sb6DnN63UVWn3kieXz844B6WJ0lxXqR8UPbOrM0eFHJ7vFmav9bw7w5pLM5Pcnk9Ws9Xyusxb7Ze'
+
+async function getKoordinater(adresse) {
+  try {
+    const r = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`)
+    const d = await r.json()
+    if (d.length > 0) return { lng: d[0].x, lat: d[0].y }
+  } catch (e) {}
+  return null
+}
+
+async function beregnKm(fraAdresse, tilAdresse) {
+  try {
+    const [fra, til] = await Promise.all([getKoordinater(fraAdresse), getKoordinater(tilAdresse)])
+    if (!fra || !til) return null
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${fra.lng},${fra.lat};${til.lng},${til.lat}?overview=false`)
+    const d = await r.json()
+    if (d.code === 'Ok' && d.routes.length > 0) {
+      return Math.round(d.routes[0].distance / 1000 * 10) / 10 // km med 1 decimal
+    }
+  } catch (e) {}
+  return null
+}
 
 export default function Sager() {
   const [sager, setSager] = useState([])
@@ -17,16 +40,14 @@ export default function Sager() {
 
   async function fetchSager() {
     setLoading(true)
-    // Hent sager uden join til profiles
     const { data: sagerData, error } = await supabase
       .from('sager')
-      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at')
+      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma')
       .order('created_at', { ascending: false })
 
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
     if (!sagerData || sagerData.length === 0) { setSager([]); setLoading(false); return }
 
-    // Hent kunder separat
     const kundeIds = [...new Set(sagerData.filter(s => s.kunde_id).map(s => s.kunde_id))]
     let kundeMap = {}
     if (kundeIds.length > 0) {
@@ -34,7 +55,6 @@ export default function Sager() {
       if (kunderData) kunderData.forEach(k => { kundeMap[k.id] = k })
     }
 
-    // Hent freelancere separat
     const flIds = [...new Set(sagerData.filter(s => s.freelancer_id).map(s => s.freelancer_id))]
     let flMap = {}
     if (flIds.length > 0) {
@@ -42,17 +62,13 @@ export default function Sager() {
       if (flData) flData.forEach(f => { flMap[f.id] = f })
     }
 
-    const merged = sagerData.map(s => ({
-      ...s,
-      kunde: kundeMap[s.kunde_id] || null,
-      freelancer: flMap[s.freelancer_id] || null
-    }))
-    setSager(merged)
+    setSager(sagerData.map(s => ({ ...s, kunde: kundeMap[s.kunde_id] || null, freelancer: flMap[s.freelancer_id] || null })))
     setLoading(false)
   }
 
   const filtered = sager.filter(s =>
     (s.kunde?.navn || '').toLowerCase().includes(search.toLowerCase()) ||
+    (s.maegler_navn || '').toLowerCase().includes(search.toLowerCase()) ||
     (s.adresse || '').toLowerCase().includes(search.toLowerCase())
   )
 
@@ -64,7 +80,7 @@ export default function Sager() {
       <ToastContainer toasts={toasts} />
       <div className="page-title">Sager</div>
       <div className="toolbar">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Søg på kunde eller adresse..." />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Søg på kunde, mægler eller adresse..." />
         <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Opret sag</button>
       </div>
       <div className="card">
@@ -75,13 +91,22 @@ export default function Sager() {
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table>
-              <thead><tr><th>Kunde</th><th>Adresse</th><th>Dato</th><th>Type</th><th>Freelancer</th><th>Status</th><th></th></tr></thead>
+              <thead>
+                <tr><th>Kunde / Mægler</th><th>Adresse</th><th>Dato</th><th>Type</th><th>Freelancer</th><th>Status</th><th></th></tr>
+              </thead>
               <tbody>
                 {filtered.map(s => (
                   <tr key={s.id} onClick={() => navigate(`/sager/${s.id}`)}>
-                    <td><b>{s.kunde?.navn || '—'}</b></td>
+                    <td>
+                      {s.kunde?.navn
+                        ? <b>{s.kunde.navn}</b>
+                        : s.maegler_navn
+                          ? <span><b>{s.maegler_navn}</b><br /><span style={{ fontSize: 11, color: 'var(--muted)' }}>{s.maegler_firma || 'Mægler'}</span></span>
+                          : <span style={{ color: 'var(--muted)' }}>—</span>
+                      }
+                    </td>
                     <td>{s.adresse || '—'}</td>
-                    <td>{s.dato ? new Date(s.dato).toLocaleDateString('da-DK') : '—'}</td>
+                    <td>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
                     <td style={{ textTransform: 'capitalize' }}>{s.type || '—'}</td>
                     <td>{s.freelancer?.navn || <span style={{ color: 'var(--muted)', fontSize: 12 }}>Ingen</span>}</td>
                     <td><span className={`badge badge-${badgeClass(s.status)}`}>{statusLabel(s.status)}</span></td>
@@ -105,27 +130,61 @@ function OpretSagModal({ onClose, onSaved, toast }) {
   const [bbr, setBbr] = useState(null)
   const [bbrLoading, setBbrLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [kmInfo, setKmInfo] = useState(null)
+  const [startadresse, setStartadresse] = useState('')
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
     supabase.from('kunder').select('id, navn').order('navn').then(({ data }) => setKunder(data || []))
     supabase.from('freelancere').select('id, navn').eq('aktiv', true).then(({ data }) => setFreelancere(data || []))
+    // Hent startadresse fra profil
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
+        const { data } = await supabase.from('profiles').select('startadresse').eq('id', user.id).single()
+        if (data?.startadresse) setStartadresse(data.startadresse)
+      }
+    })
   }, [])
 
-  async function lookupBBR(adresse) {
+  async function lookupBBRogKm(adresse) {
     if (adresse.length < 6) return
     setBbrLoading(true)
     try {
-      const r = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1`)
-      const d = await r.json()
-      if (d.length > 0) setBbr({ vejnavn: d[0].vejnavn, postnr: d[0].postnr })
-    } catch (e) { }
+      const r1 = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`)
+      const d1 = await r1.json()
+      if (d1 && d1.length > 0) {
+        const adresseId = d1[0].id
+        const adgAdrId = d1[0].adgangsadresseid
+        const r2 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/enhed?AdresseIdentificerer=${adresseId}&MedDybde=true&token=${BBR_TOKEN}`)
+        const d2 = await r2.json()
+        let boligareal = null
+        if (d2 && d2.length > 0) boligareal = d2[0].enh020EnhedensAreal || d2[0].enh021ArealTilBeboelse || null
+        const r3 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning?AdresseIdentificerer=${adgAdrId}&MedDybde=true&token=${BBR_TOKEN}`)
+        const d3 = await r3.json()
+        let grundareal = null, etager = null
+        if (d3 && d3.length > 0) { grundareal = d3[0].byg041BebyggetAreal || null; etager = d3[0].byg054AntalEtager || null }
+        setBbr({ adresseId, adgAdrId, boligareal, grundareal, etager })
+
+        // Beregn km hvis startadresse er sat
+        if (startadresse) {
+          const km = await beregnKm(startadresse, adresse)
+          if (km) setKmInfo({ km, tur_retur: Math.round(km * 2 * 10) / 10 })
+        }
+      }
+    } catch (e) { console.error('BBR/km fejl:', e) }
     setBbrLoading(false)
   }
 
   async function handleSave() {
     if (!form.adresse || !form.dato) { toast('Udfyld adresse og dato', 'error'); return }
     setSaving(true)
+
+    // Beregn km hvis ikke allerede gjort
+    let km = kmInfo?.km || null
+    if (!km && startadresse && form.adresse) {
+      km = await beregnKm(startadresse, form.adresse)
+    }
+
     const { error } = await supabase.from('sager').insert([{
       adresse: form.adresse,
       dato: form.dato,
@@ -135,11 +194,11 @@ function OpretSagModal({ onClose, onSaved, toast }) {
       maks_billeder: form.maks_billeder,
       noter: form.noter || null,
       status: 'ny',
-      bbr_data: bbr || null
+      bbr_data: bbr || null,
+      km_distance: km,
     }])
     if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
-    setSaving(false)
-    onSaved()
+    setSaving(false); onSaved()
   }
 
   return (
@@ -148,13 +207,23 @@ function OpretSagModal({ onClose, onSaved, toast }) {
         <div className="modal-title">Opret ny sag<button className="modal-close" onClick={onClose}>✕</button></div>
         <div className="form-group">
           <label>Adresse *</label>
-          <input value={form.adresse} onChange={e => set('adresse', e.target.value)} onBlur={e => lookupBBR(e.target.value)} placeholder="f.eks. Lyngvigvej 12, 2750 Ballerup" autoFocus />
-          {bbrLoading && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>⏳ Verificerer adresse...</div>}
-          {bbr && <div style={{ fontSize: 12, color: 'var(--grn)', marginTop: 4 }}>✓ Adresse fundet</div>}
+          <input value={form.adresse} onChange={e => set('adresse', e.target.value)}
+            onBlur={e => lookupBBRogKm(e.target.value)}
+            placeholder="f.eks. Lyngvigvej 12, 2750 Ballerup" autoFocus />
+          {bbrLoading && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>⏳ Henter data...</div>}
+          {bbr && !bbrLoading && (
+            <div style={{ fontSize: 12, color: 'var(--grn)', marginTop: 4 }}>
+              ✓ Adresse fundet{bbr.boligareal ? ` · ${bbr.boligareal} m²` : ''}
+              {kmInfo && <span> · <b>{kmInfo.km} km</b> fra din adresse ({kmInfo.tur_retur} km tur/retur)</span>}
+            </div>
+          )}
+          {!startadresse && (
+            <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 4 }}>⚠ Sæt din startadresse under Indstillinger for automatisk km-beregning</div>
+          )}
         </div>
         <div className="form-group"><label>Kunde (valgfrit)</label>
           <select value={form.kunde_id} onChange={e => set('kunde_id', e.target.value)}>
-            <option value="">— Vælg eksisterende kunde —</option>
+            <option value="">— Vælg kunde —</option>
             {kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}
           </select>
         </div>
@@ -176,7 +245,7 @@ function OpretSagModal({ onClose, onSaved, toast }) {
             {freelancere.map(f => <option key={f.id} value={f.id}>{f.navn}</option>)}
           </select>
         </div>
-        <div className="form-group"><label>Noter</label><textarea rows={3} value={form.noter} onChange={e => set('noter', e.target.value)} placeholder="Sagsbeskrivelse, særlige ønsker..." /></div>
+        <div className="form-group"><label>Noter</label><textarea rows={3} value={form.noter} onChange={e => set('noter', e.target.value)} placeholder="Sagsbeskrivelse..." /></div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>Annuller</button>
           <button className="btn btn-green btn-sm" onClick={handleSave} disabled={saving}>{saving ? 'Opretter...' : 'Opret sag'}</button>
