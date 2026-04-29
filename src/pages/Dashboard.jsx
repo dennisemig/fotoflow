@@ -63,10 +63,10 @@ export default function Dashboard() {
   const todayMonth = new Date().getMonth()
   const todayYear = new Date().getFullYear()
 
-  const sagsForDay = day => {
-    const d = new Date(calYear, calMonth, day).toISOString().split('T')[0]
-    return calSager.filter(s => s.dato === d)
-  }
+const sagsForDay = day => {
+  const d = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  return calSager.filter(s => s.dato === d)
+}
 
   const statusColor = s => ({ aktiv: '#2e7d4f', afventer: '#e5a243', leveret: '#0c447c', ny: '#3A4A5A', afsluttet: '#6b7280' }[s] || '#3A4A5A')
   const statusLabel = s => ({ ny: 'Ny', aktiv: 'Aktiv', afventer: 'Afventer', afsluttet: 'Afsluttet', leveret: 'Leveret' }[s] || 'Ny')
