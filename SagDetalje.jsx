@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 
+const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
+
 export default function SagDetalje() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -10,13 +12,16 @@ export default function SagDetalje() {
   const [kunde, setKunde] = useState(null)
   const [freelancer, setFreelancer] = useState(null)
   const [freelancere, setFreelancere] = useState([])
+  const [kunder, setKunder] = useState([])
   const [noter, setNoter] = useState('')
   const [mwNummer, setMwNummer] = useState('')
   const [saving, setSaving] = useState(false)
   const [showBookModal, setShowBookModal] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState({})
   const { toasts, toast } = useToast()
 
-  useEffect(() => { fetchSag(); fetchFreelancere() }, [id])
+  useEffect(() => { fetchSag(); fetchFreelancere(); fetchKunder() }, [id])
 
   async function fetchSag() {
     const { data } = await supabase.from('sager').select('*').eq('id', id).single()
@@ -24,6 +29,15 @@ export default function SagDetalje() {
     setSag(data)
     setNoter(data.noter || '')
     setMwNummer(data.mindworking_sagsnummer || '')
+    setEditForm({
+      adresse: data.adresse || '',
+      dato: data.dato || '',
+      tidspunkt: data.tidspunkt ? String(data.tidspunkt).slice(0, 5) : '',
+      type: data.type || 'ejendom',
+      maks_billeder: data.maks_billeder || 20,
+      kunde_id: data.kunde_id || '',
+      freelancer_id: data.freelancer_id || '',
+    })
     if (data.kunde_id) {
       const { data: k } = await supabase.from('kunder').select('*').eq('id', data.kunde_id).single()
       setKunde(k)
@@ -37,6 +51,29 @@ export default function SagDetalje() {
   async function fetchFreelancere() {
     const { data } = await supabase.from('freelancere').select('id, navn, email').eq('aktiv', true)
     setFreelancere(data || [])
+  }
+
+  async function fetchKunder() {
+    const { data } = await supabase.from('kunder').select('id, navn').order('navn')
+    setKunder(data || [])
+  }
+
+  async function saveEdit() {
+    setSaving(true)
+    const { error } = await supabase.from('sager').update({
+      adresse: editForm.adresse,
+      dato: editForm.dato,
+      tidspunkt: editForm.tidspunkt || null,
+      type: editForm.type,
+      maks_billeder: editForm.maks_billeder,
+      kunde_id: editForm.kunde_id || null,
+      freelancer_id: editForm.freelancer_id || null,
+    }).eq('id', id)
+    if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
+    setSaving(false)
+    setEditing(false)
+    fetchSag()
+    toast('✓ Sag opdateret')
   }
 
   async function saveNoter() {
@@ -61,7 +98,6 @@ export default function SagDetalje() {
   async function sletSag() {
     if (!confirm('Slet denne sag permanent? Dette kan ikke fortrydes.')) return
     await supabase.from('sager').delete().eq('id', id)
-    toast('Sag slettet')
     navigate('/sager')
   }
 
@@ -74,7 +110,7 @@ export default function SagDetalje() {
     toast(`✓ ${fl?.navn} booket!`)
     await fetch('/api/send-notification', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'freelancer_booking', mægler: { email: fl?.email, navn: fl?.navn, adresse: sag?.adresse, dato: sag?.dato ? new Date(sag.dato).toLocaleDateString('da-DK') : '', tidspunkt: '' } })
+      body: JSON.stringify({ type: 'freelancer_booking', mægler: { email: fl?.email, navn: fl?.navn, adresse: sag?.adresse, dato: sag?.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '', tidspunkt: '' } })
     }).catch(() => {})
   }
 
@@ -90,13 +126,19 @@ export default function SagDetalje() {
   const statusLabel = s => ({ ny: 'Ny', aktiv: 'Aktiv', afventer: 'Afventer', afsluttet: 'Afsluttet', leveret: 'Leveret' }[s] || 'Ny')
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', leveret: 'leveret', ny: 'new', afsluttet: 'done' }[s] || 'new')
   const initials = n => n?.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase() || '?'
+  const set = (k, v) => setEditForm(f => ({ ...f, [k]: v }))
 
   return (
     <div>
       <ToastContainer toasts={toasts} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div className="back-link" style={{ margin: 0 }} onClick={() => navigate('/sager')}>← Tilbage til sager</div>
-        <button className="btn btn-red btn-sm" onClick={sletSag}>🗑 Slet sag</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => setEditing(!editing)}>
+            {editing ? 'Annuller redigering' : '✏ Rediger sag'}
+          </button>
+          <button className="btn btn-red btn-sm" onClick={sletSag}>🗑 Slet</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -104,18 +146,46 @@ export default function SagDetalje() {
         <span className={`badge badge-${badgeClass(sag.status)}`}>{statusLabel(sag.status)}</span>
       </div>
 
+      {/* REDIGÉR MODAL */}
+      {editing && (
+        <div className="card" style={{ marginBottom: 16, border: '2px solid var(--pr)' }}>
+          <div className="section-hd">Rediger sagsoplysninger</div>
+          <div className="form-group"><label>Adresse</label><input value={editForm.adresse} onChange={e => set('adresse', e.target.value)} /></div>
+          <div className="form-group"><label>Kunde</label>
+            <select value={editForm.kunde_id} onChange={e => set('kunde_id', e.target.value)}>
+              <option value="">— Ingen kunde —</option>
+              {kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group"><label>Dato</label><input type="date" value={editForm.dato} onChange={e => set('dato', e.target.value)} /></div>
+            <div className="form-group"><label>Tidspunkt</label><input type="time" value={editForm.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group"><label>Type</label>
+              <select value={editForm.type} onChange={e => set('type', e.target.value)}>
+                {TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Maks billeder</label><input type="number" value={editForm.maks_billeder} onChange={e => set('maks_billeder', parseInt(e.target.value))} /></div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-green" onClick={saveEdit} disabled={saving}>{saving ? 'Gemmer...' : '✓ Gem ændringer'}</button>
+            <button className="btn btn-outline" onClick={() => setEditing(false)}>Annuller</button>
+          </div>
+        </div>
+      )}
+
       <div className="grid2">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          {/* SAGSDETALJER */}
           <div className="card">
             <div className="section-hd">Sagsdetaljer</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               {[
-                { lbl: 'Dato', val: sag.dato ? new Date(sag.dato).toLocaleDateString('da-DK') : '—' },
+                { lbl: 'Dato', val: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—' },
                 { lbl: 'Tidspunkt', val: sag.tidspunkt ? String(sag.tidspunkt).slice(0, 5) : '—' },
                 { lbl: 'Type', val: sag.type || '—' },
-                { lbl: 'Maks billeder', val: sag.maks_billeder || sag.max_billeder || 20 },
+                { lbl: 'Maks billeder', val: sag.maks_billeder || 20 },
               ].map((r, i) => (
                 <div key={i}>
                   <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>{r.lbl}</div>
@@ -126,27 +196,16 @@ export default function SagDetalje() {
             <button className="btn btn-outline btn-sm" onClick={() => window.open(`https://maps.google.com?q=${encodeURIComponent(sag.adresse)}`)}>📍 Vis på Google Maps</button>
           </div>
 
-          {/* KUNDEINFO */}
           {kunde && (
             <div className="card">
               <div className="section-hd">Kundeinfo</div>
-              <div style={{ marginBottom: 6 }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Navn</div>
-                <div style={{ fontWeight: 600 }}>{kunde.navn}</div>
-              </div>
-              <div style={{ marginBottom: 6 }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Telefon</div>
-                <div>{kunde.telefon || '—'}</div>
-              </div>
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Email</div>
-                <div style={{ color: 'var(--pr)' }}>{kunde.email || '—'}</div>
-              </div>
+              <div style={{ marginBottom: 6 }}><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Navn</div><div style={{ fontWeight: 600 }}>{kunde.navn}</div></div>
+              <div style={{ marginBottom: 6 }}><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Telefon</div><div>{kunde.telefon || '—'}</div></div>
+              <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Email</div><div style={{ color: 'var(--pr)' }}>{kunde.email || '—'}</div></div>
               <button className="btn btn-outline btn-sm" onClick={() => navigate(`/kunder/${kunde.id}`)}>Se kundeprofil →</button>
             </div>
           )}
 
-          {/* STATUS */}
           <div className="card">
             <div className="section-hd">Opdater status</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -158,65 +217,34 @@ export default function SagDetalje() {
             </div>
           </div>
 
-          {/* MINDWORKING */}
           <div className="card">
-            <div className="section-hd">Mindworking</div><div style={{ marginBottom: 12 }}>
-  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: 5 }}>Mindworking sagsnummer</label>
-  <div style={{ display: 'flex', gap: 8 }}>
-    <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. MW-2024-1234" style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--brd)', fontSize: 13 }} />
-    <button className="btn btn-primary btn-sm" onClick={saveMwNummer}>Gem</button>
-  </div>
-</div>
+            <div className="section-hd">Mindworking</div>
             <div className="form-group" style={{ marginBottom: 10 }}>
               <label>Mindworking sagsnummer</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  value={mwNummer}
-                  onChange={e => setMwNummer(e.target.value)}
-                  placeholder="f.eks. MW-2024-1234"
-                  style={{ flex: 1 }}
-                />
+                <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. MW-2024-1234" style={{ flex: 1 }} />
                 <button className="btn btn-primary btn-sm" onClick={saveMwNummer}>Gem</button>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                Bruges når billederne sendes til Mindworking
-              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Bruges når billederne sendes til Mindworking</div>
             </div>
-            {mwNummer ? (
-              <div className="ok-box" style={{ marginBottom: 10 }}>
-                ✓ Sagsnummer gemt – klar til Mindworking integration
-              </div>
-            ) : (
-              <div className="warn-box" style={{ marginBottom: 10 }}>
-                ⏳ Indtast sagsnummer fra Mindworking for at kunne sende billeder
-              </div>
-            )}
-            <button
-              className="btn btn-sm"
-              style={{ background: mwNummer ? 'var(--pr)' : '#8fa8bc', color: '#fff', opacity: mwNummer ? 1 : 0.6, cursor: mwNummer ? 'pointer' : 'not-allowed' }}
-              disabled={!mwNummer}
-              title={!mwNummer ? 'Indtast Mindworking sagsnummer først' : 'Send billeder til Mindworking'}>
+            {mwNummer
+              ? <div className="ok-box" style={{ marginBottom: 10 }}>✓ Sagsnummer gemt – klar til Mindworking integration</div>
+              : <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Indtast sagsnummer fra Mindworking for at kunne sende billeder</div>
+            }
+            <button className="btn btn-sm" style={{ background: mwNummer ? 'var(--pr)' : '#8fa8bc', color: '#fff', opacity: mwNummer ? 1 : 0.6, cursor: mwNummer ? 'pointer' : 'not-allowed' }} disabled={!mwNummer}>
               ⚡ Send til Mindworking
             </button>
           </div>
-
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          {/* FREELANCER */}
           <div className="card">
             <div className="section-hd">Tilknyttet freelancer</div>
             {freelancer ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--bg)', borderRadius: 8, marginBottom: 10 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--pr)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>
-                    {initials(freelancer.navn)}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{freelancer.navn}</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>{freelancer.email}</div>
-                  </div>
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--pr)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{initials(freelancer.navn)}</div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{freelancer.navn}</div><div style={{ fontSize: 12, color: 'var(--muted)' }}>{freelancer.email}</div></div>
                   <span className="badge badge-active">Booket</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -232,29 +260,22 @@ export default function SagDetalje() {
             )}
           </div>
 
-          {/* NOTER */}
           <div className="card">
             <div className="section-hd">Noter</div>
-            <textarea
-              value={noter}
-              onChange={e => setNoter(e.target.value)}
+            <textarea value={noter} onChange={e => setNoter(e.target.value)}
               style={{ width: '100%', minHeight: 100, padding: 10, border: '1px solid var(--brd)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }}
-              placeholder="Skriv noter til sagen..."
-            />
-            <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={saveNoter} disabled={saving}>
-              {saving ? 'Gemmer...' : 'Gem noter'}
-            </button>
+              placeholder="Skriv noter til sagen..." />
+            <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={saveNoter} disabled={saving}>{saving ? 'Gemmer...' : 'Gem noter'}</button>
           </div>
 
-          {/* BBR DATA */}
-          {sag.bbr_data && (
+          {sag.bbr_data && (sag.bbr_data.boligareal || sag.bbr_data.grundareal || sag.bbr_data.etager) && (
             <div className="card">
               <div className="section-hd">Ejendomsdata (BBR)</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
                 {[
                   { icon: '📐', val: sag.bbr_data.boligareal ? `${sag.bbr_data.boligareal} m²` : '—', lbl: 'Boligareal' },
                   { icon: '🌿', val: sag.bbr_data.grundareal ? `${sag.bbr_data.grundareal} m²` : '—', lbl: 'Grundareal' },
-                  { icon: '🏠', val: sag.bbr_data.etager ? `${sag.bbr_data.etager} plan` : '—', lbl: 'Etager' },
+                  { icon: '🏠', val: sag.bbr_data.etager ? `${sag.bbr_data.etager} etager` : '—', lbl: 'Etager' },
                 ].map((b, i) => (
                   <div key={i} style={{ textAlign: 'center', background: 'var(--bg)', borderRadius: 8, padding: 10, border: '.5px solid var(--brd)' }}>
                     <div style={{ fontSize: 18 }}>{b.icon}</div>
@@ -265,18 +286,13 @@ export default function SagDetalje() {
               </div>
             </div>
           )}
-
         </div>
       </div>
 
-      {/* BOOK FREELANCER MODAL */}
       {showBookModal && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowBookModal(false)}>
           <div className="modal">
-            <div className="modal-title">
-              Book freelancer
-              <button className="modal-close" onClick={() => setShowBookModal(false)}>✕</button>
-            </div>
+            <div className="modal-title">Book freelancer<button className="modal-close" onClick={() => setShowBookModal(false)}>✕</button></div>
             {freelancere.length === 0
               ? <div className="empty-state"><div className="empty-icon">📷</div>Ingen freelancere – tilføj en under Freelancere</div>
               : freelancere.map(f => (
@@ -284,13 +300,8 @@ export default function SagDetalje() {
                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, border: '.5px solid var(--brd)', borderRadius: 10, marginBottom: 8, cursor: 'pointer' }}
                   onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--pr)'}
                   onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--brd)'}>
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--pr)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-                    {initials(f.navn)}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{f.navn}</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>{f.email}</div>
-                  </div>
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--pr)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{initials(f.navn)}</div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{f.navn}</div><div style={{ fontSize: 12, color: 'var(--muted)' }}>{f.email}</div></div>
                   <div style={{ color: 'var(--pr)', fontWeight: 600 }}>Book →</div>
                 </div>
               ))
