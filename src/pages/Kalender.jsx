@@ -37,10 +37,10 @@ export default function Kalender() {
   const todayStr = new Date().toISOString().split('T')[0]
   const monthName = new Date(year, month, 1).toLocaleString('da-DK', { month: 'long', year: 'numeric' })
 
-  const sagsForDay = day => {
-    const d = new Date(year, month, day).toISOString().split('T')[0]
-    return sager.filter(s => s.dato === d)
-  }
+const sagsForDay = day => {
+  const d = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  return calSager.filter(s => s.dato === d)
+}
 
   const statusColor = s => ({ aktiv: '#2e7d4f', afventer: '#e5a243', leveret: '#0c447c', ny: '#3A4A5A', afsluttet: '#6b7280' }[s] || '#3A4A5A')
 
