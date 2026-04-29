@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
-const CHUNK = 10 * 1024 * 1024 // 10MB chunks - under Vercel limit
+const CHUNK = 148 * 1024 * 1024 // 148MB - Dropbox max chunk size
 
 export default function SagDetalje() {
   const { id } = useParams()
@@ -23,12 +23,25 @@ export default function SagDetalje() {
   const [uploads, setUploads] = useState([])
   const [uploading, setUploading] = useState(false)
   const [fileProgress, setFileProgress] = useState({})
+  const [dbxToken, setDbxToken] = useState(null)
   const fileInputRef = useRef()
   const { toasts, toast } = useToast()
 
   useEffect(() => {
-    fetchSag(); fetchFreelancere(); fetchKunder(); fetchUploads()
+    fetchSag(); fetchFreelancere(); fetchKunder(); fetchUploads(); getDbxToken()
   }, [id])
+
+  async function getDbxToken() {
+    try {
+      const r = await fetch('/api/dropbox-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_token' })
+      })
+      const d = await r.json()
+      if (d.token) setDbxToken(d.token)
+    } catch (e) { console.error('Token fejl:', e) }
+  }
 
   async function fetchSag() {
     const { data } = await supabase.from('sager').select('*').eq('id', id).single()
@@ -38,21 +51,15 @@ export default function SagDetalje() {
     if (data.kunde_id) { const { data: k } = await supabase.from('kunder').select('*').eq('id', data.kunde_id).single(); setKunde(k) }
     if (data.freelancer_id) { const { data: f } = await supabase.from('freelancere').select('*').eq('id', data.freelancer_id).single(); setFreelancer(f) }
   }
+
   async function fetchFreelancere() { const { data } = await supabase.from('freelancere').select('id, navn, email').eq('aktiv', true); setFreelancere(data || []) }
   async function fetchKunder() { const { data } = await supabase.from('kunder').select('id, navn').order('navn'); setKunder(data || []) }
   async function fetchUploads() { const { data } = await supabase.from('uploads').select('*').eq('sag_id', id).order('uploaded_at', { ascending: false }); setUploads(data || []) }
 
-  async function dbxCall(action, apiArg, body) {
-    const headers = { 'Action': action }
-    if (apiArg) headers['Dropbox-API-Arg'] = JSON.stringify(apiArg)
-    if (typeof body === 'string') headers['Content-Type'] = 'application/json'
-    const r = await fetch('/api/dropbox-upload', { method: 'POST', headers, body })
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error || e.error_summary || 'Dropbox fejl') }
-    return r.headers.get('content-type')?.includes('json') ? r.json() : r
-  }
-
+  // Upload direkte til Dropbox med chunked upload
   async function uploadFiles(files) {
     if (!files?.length) return
+    if (!dbxToken) { toast('Venter på Dropbox forbindelse...', 'warning'); await getDbxToken(); return }
     setUploading(true)
     const sagNavn = sag?.adresse?.replace(/[^a-zA-Z0-9æøåÆØÅ ]/g, '_').trim() || id
 
@@ -62,34 +69,75 @@ export default function SagDetalje() {
         const path = `/VaniaGraphics/Sager/${sagNavn}/${file.name}`
 
         if (file.size <= CHUNK) {
-          // Lille fil – direkte upload
+          // Enkelt upload for filer under 148MB
           const buf = await file.arrayBuffer()
-          const res = await dbxCall('upload', { path, mode: 'overwrite', autorename: true }, buf)
+          const r = await fetch('https://content.dropboxapi.com/2/files/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${dbxToken}`,
+              'Dropbox-API-Arg': JSON.stringify({ path, mode: 'overwrite', autorename: true }),
+              'Content-Type': 'application/octet-stream',
+            },
+            body: buf
+          })
+          if (!r.ok) {
+            const e = await r.json()
+            throw new Error(e.error_summary || 'Upload fejlede')
+          }
+          const res = await r.json()
           await saveUpload(file, res.path_display)
         } else {
-          // Stor fil – chunked session
+          // Stor fil – upload session
           const firstBuf = await file.slice(0, CHUNK).arrayBuffer()
-          const { session_id } = await dbxCall('start', { close: false }, firstBuf)
-          setFileProgress(p => ({ ...p, [file.name]: 5 }))
+          const startR = await fetch('https://content.dropboxapi.com/2/files/upload_session/start', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${dbxToken}`,
+              'Dropbox-API-Arg': JSON.stringify({ close: false }),
+              'Content-Type': 'application/octet-stream',
+            },
+            body: firstBuf
+          })
+          if (!startR.ok) throw new Error('Kunne ikke starte upload')
+          const { session_id } = await startR.json()
+          setFileProgress(p => ({ ...p, [file.name]: 10 }))
 
           let offset = CHUNK
           while (offset + CHUNK < file.size) {
             const chunk = await file.slice(offset, offset + CHUNK).arrayBuffer()
-            await dbxCall('append', { cursor: { session_id, offset }, close: false }, chunk)
+            await fetch('https://content.dropboxapi.com/2/files/upload_session/append_v2', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${dbxToken}`,
+                'Dropbox-API-Arg': JSON.stringify({ cursor: { session_id, offset }, close: false }),
+                'Content-Type': 'application/octet-stream',
+              },
+              body: chunk
+            })
             offset += CHUNK
             setFileProgress(p => ({ ...p, [file.name]: Math.round(offset / file.size * 90) }))
           }
 
           const lastBuf = await file.slice(offset).arrayBuffer()
-          const res = await dbxCall('finish', { cursor: { session_id, offset }, commit: { path, mode: 'overwrite', autorename: true } }, lastBuf)
+          const finishR = await fetch('https://content.dropboxapi.com/2/files/upload_session/finish', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${dbxToken}`,
+              'Dropbox-API-Arg': JSON.stringify({ cursor: { session_id, offset }, commit: { path, mode: 'overwrite', autorename: true } }),
+              'Content-Type': 'application/octet-stream',
+            },
+            body: lastBuf
+          })
+          if (!finishR.ok) throw new Error('Kunne ikke afslutte upload')
+          const res = await finishR.json()
           await saveUpload(file, res.path_display)
         }
 
         setFileProgress(p => ({ ...p, [file.name]: 100 }))
         toast(`✓ ${file.name} uploadet!`)
       } catch (e) {
-        console.error(e)
-        toast(`Fejl: ${file.name}`, 'error')
+        console.error('Upload fejl:', e)
+        toast(`Fejl ved ${file.name}: ${e.message}`, 'error')
         setFileProgress(p => ({ ...p, [file.name]: -1 }))
       }
     }
@@ -108,15 +156,25 @@ export default function SagDetalje() {
 
   async function openFile(path) {
     try {
-      const d = await dbxCall('link', null, JSON.stringify({ path }))
+      const r = await fetch('/api/dropbox-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'link', path })
+      })
+      const d = await r.json()
       if (d.link) window.open(d.link, '_blank')
-    } catch (e) { toast('Kunne ikke åbne fil', 'error') }
+      else toast('Kunne ikke hente link', 'error')
+    } catch (e) { toast('Fejl', 'error') }
   }
 
   async function deleteUpload(upload) {
     if (!confirm(`Slet ${upload.filnavn}?`)) return
     try {
-      await dbxCall('delete', null, JSON.stringify({ path: upload.dropbox_path }))
+      await fetch('/api/dropbox-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', path: upload.dropbox_path })
+      })
       await supabase.from('uploads').delete().eq('id', upload.id)
       setUploads(u => u.filter(x => x.id !== upload.id))
       toast('Fil slettet')
@@ -259,55 +317,65 @@ export default function SagDetalje() {
           </div>
 
           <div className="card">
-            <div className="section-hd">Filer & billeder (Dropbox)</div>
-            <div
-              onClick={() => !uploading && fileInputRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--pr)' }}
-              onDragLeave={e => e.currentTarget.style.borderColor = '#c5d3dc'}
-              onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#c5d3dc'; if (!uploading) uploadFiles(e.dataTransfer.files) }}
-              style={{ border: '2px dashed #c5d3dc', borderRadius: 12, padding: 20, textAlign: 'center', cursor: uploading ? 'default' : 'pointer', marginBottom: 12 }}>
-              <div style={{ fontSize: 24, marginBottom: 6 }}>{uploading ? '⏳' : '📂'}</div>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                {uploading
-                  ? <strong style={{ color: 'var(--pr)' }}>Uploader til Dropbox...</strong>
-                  : <><strong style={{ color: 'var(--pr)' }}>Klik eller træk filer hertil</strong><br /><span style={{ fontSize: 11 }}>RAW, JPG, PNG – ingen størrelsesgrænse · gemmes i /VaniaGraphics/Sager/</span></>
-                }
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div className="section-hd" style={{ margin: 0 }}>Filer & billeder</div>
+              {dbxToken && <div style={{ fontSize: 11, color: 'var(--grn)', fontWeight: 600 }}>✓ Dropbox klar</div>}
             </div>
-            <input ref={fileInputRef} type="file" multiple accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.rw2" style={{ display: 'none' }} onChange={e => uploadFiles(e.target.files)} />
 
-            {Object.keys(fileProgress).length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                {Object.entries(fileProgress).map(([name, pct]) => (
-                  <div key={name} style={{ marginBottom: 6 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>{name}</span>
-                      <span style={{ color: pct < 0 ? 'var(--red)' : pct === 100 ? 'var(--grn)' : 'var(--muted)', fontWeight: 600 }}>{pct < 0 ? 'Fejl' : pct === 100 ? '✓' : `${pct}%`}</span>
-                    </div>
-                    <div style={{ height: 4, background: '#e8edf1', borderRadius: 4 }}>
-                      <div style={{ height: '100%', width: `${Math.max(0, pct)}%`, background: pct < 0 ? 'var(--red)' : pct === 100 ? 'var(--grn)' : 'var(--pr)', borderRadius: 4, transition: 'width .3s' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {uploads.length > 0 ? (
+            {!dbxToken ? (
+              <div className="info-box">⏳ Henter Dropbox forbindelse...</div>
+            ) : (
               <>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Uploadede filer ({uploads.length})</div>
-                {uploads.map(u => (
-                  <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '.5px solid var(--brd)' }}>
-                    <span style={{ fontSize: 18 }}>{fileIcon(u.type)}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.filnavn}</div>
-                      <div style={{ fontSize: 10, color: 'var(--muted)' }}>{u.uploaded_at ? new Date(u.uploaded_at).toLocaleDateString('da-DK') : ''}</div>
-                    </div>
-                    <button className="btn btn-outline btn-sm" onClick={() => openFile(u.dropbox_path)}>Åbn</button>
-                    <button className="btn btn-red btn-sm" onClick={() => deleteUpload(u)}>✕</button>
+                <div
+                  onClick={() => !uploading && fileInputRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--pr)' }}
+                  onDragLeave={e => e.currentTarget.style.borderColor = '#c5d3dc'}
+                  onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#c5d3dc'; if (!uploading) uploadFiles(e.dataTransfer.files) }}
+                  style={{ border: '2px dashed #c5d3dc', borderRadius: 12, padding: 20, textAlign: 'center', cursor: uploading ? 'default' : 'pointer', marginBottom: 12 }}>
+                  <div style={{ fontSize: 24, marginBottom: 6 }}>{uploading ? '⏳' : '📂'}</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                    {uploading
+                      ? <strong style={{ color: 'var(--pr)' }}>Uploader direkte til Dropbox...</strong>
+                      : <><strong style={{ color: 'var(--pr)' }}>Klik eller træk filer hertil</strong><br /><span style={{ fontSize: 11 }}>RAW, JPG, PNG – ingen størrelsesgrænse · /VaniaGraphics/Sager/</span></>
+                    }
                   </div>
-                ))}
+                </div>
+                <input ref={fileInputRef} type="file" multiple accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.rw2" style={{ display: 'none' }} onChange={e => uploadFiles(e.target.files)} />
+
+                {Object.keys(fileProgress).length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    {Object.entries(fileProgress).map(([name, pct]) => (
+                      <div key={name} style={{ marginBottom: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>{name}</span>
+                          <span style={{ color: pct < 0 ? 'var(--red)' : pct === 100 ? 'var(--grn)' : 'var(--muted)', fontWeight: 600 }}>{pct < 0 ? 'Fejl' : pct === 100 ? '✓' : `${pct}%`}</span>
+                        </div>
+                        <div style={{ height: 4, background: '#e8edf1', borderRadius: 4 }}>
+                          <div style={{ height: '100%', width: `${Math.max(0, pct)}%`, background: pct < 0 ? 'var(--red)' : pct === 100 ? 'var(--grn)' : 'var(--pr)', borderRadius: 4, transition: 'width .3s' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {uploads.length > 0 ? (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Uploadede filer ({uploads.length})</div>
+                    {uploads.map(u => (
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '.5px solid var(--brd)' }}>
+                        <span style={{ fontSize: 18 }}>{fileIcon(u.type)}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.filnavn}</div>
+                          <div style={{ fontSize: 10, color: 'var(--muted)' }}>{u.uploaded_at ? new Date(u.uploaded_at).toLocaleDateString('da-DK') : ''}</div>
+                        </div>
+                        <button className="btn btn-outline btn-sm" onClick={() => openFile(u.dropbox_path)}>Åbn</button>
+                        <button className="btn btn-red btn-sm" onClick={() => deleteUpload(u)}>✕</button>
+                      </div>
+                    ))}
+                  </>
+                ) : !uploading && <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>Ingen filer uploadet endnu</div>}
               </>
-            ) : !uploading && <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>Ingen filer uploadet endnu</div>}
+            )}
           </div>
 
           {sag.bbr_data && (sag.bbr_data.boligareal || sag.bbr_data.grundareal || sag.bbr_data.etager) && (
