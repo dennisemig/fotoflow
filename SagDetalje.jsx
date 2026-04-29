@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
+const DROPBOX_APP_KEY = '0cojdwayx1hdlst'
 
 export default function SagDetalje() {
   const { id } = useParams()
@@ -19,9 +20,44 @@ export default function SagDetalje() {
   const [showBookModal, setShowBookModal] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({})
+  const [uploads, setUploads] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState({})
+  const [dbxToken, setDbxToken] = useState(null)
+  const fileInputRef = useRef()
   const { toasts, toast } = useToast()
 
-  useEffect(() => { fetchSag(); fetchFreelancere(); fetchKunder() }, [id])
+  useEffect(() => {
+    fetchSag()
+    fetchFreelancere()
+    fetchKunder()
+    fetchUploads()
+    checkDropboxAuth()
+  }, [id])
+
+  async function checkDropboxAuth() {
+    // Check for token in URL after OAuth redirect
+    const hash = window.location.hash
+    if (hash.includes('access_token')) {
+      const params = new URLSearchParams(hash.replace('#', '?'))
+      const token = params.get('access_token')
+      if (token) {
+        localStorage.setItem('dropbox_token', token)
+        setDbxToken(token)
+        window.history.replaceState({}, '', window.location.pathname)
+        toast('✓ Dropbox forbundet!')
+        return
+      }
+    }
+    const saved = localStorage.getItem('dropbox_token')
+    if (saved) setDbxToken(saved)
+  }
+
+  function connectDropbox() {
+    const redirectUri = encodeURIComponent(window.location.href.split('#')[0])
+    const url = `https://www.dropbox.com/oauth2/authorize?client_id=${DROPBOX_APP_KEY}&response_type=token&redirect_uri=${redirectUri}`
+    window.location.href = url
+  }
 
   async function fetchSag() {
     const { data } = await supabase.from('sager').select('*').eq('id', id).single()
@@ -58,6 +94,98 @@ export default function SagDetalje() {
     setKunder(data || [])
   }
 
+  async function fetchUploads() {
+    const { data } = await supabase.from('uploads').select('*').eq('sag_id', id).order('uploaded_at', { ascending: false })
+    setUploads(data || [])
+  }
+
+  async function uploadFiles(files) {
+    if (!dbxToken) { connectDropbox(); return }
+    if (!files || files.length === 0) return
+    setUploading(true)
+
+    for (const file of Array.from(files)) {
+      setUploadProgress(p => ({ ...p, [file.name]: 0 }))
+      try {
+        const sagNavn = sag?.adresse?.replace(/[^a-zA-Z0-9æøåÆØÅ\s]/g, '_') || id
+        const path = `/VaniaGraphics/Sager/${sagNavn}/${file.name}`
+
+        const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${dbxToken}`,
+            'Dropbox-API-Arg': JSON.stringify({ path, mode: 'overwrite', autorename: true }),
+            'Content-Type': 'application/octet-stream'
+          },
+          body: file
+        })
+
+        if (!response.ok) {
+          const err = await response.json()
+          if (err.error?.['.tag'] === 'expired_access_token') {
+            localStorage.removeItem('dropbox_token')
+            setDbxToken(null)
+            toast('Dropbox session udløbet – forbind igen', 'error')
+            break
+          }
+          throw new Error(err.error_summary || 'Upload fejlede')
+        }
+
+        const result = await response.json()
+
+        // Gem link i Supabase
+        await supabase.from('uploads').insert([{
+          sag_id: id,
+          filnavn: file.name,
+          dropbox_path: result.path_display,
+          type: file.type.startsWith('image/') ? 'billede' : 'fil',
+          uploaded_at: new Date().toISOString()
+        }])
+
+        setUploadProgress(p => ({ ...p, [file.name]: 100 }))
+        toast(`✓ ${file.name} uploaded!`)
+      } catch (e) {
+        toast(`Fejl ved upload af ${file.name}: ${e.message}`, 'error')
+      }
+    }
+
+    setUploading(false)
+    fetchUploads()
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function getDropboxLink(path) {
+    try {
+      const r = await fetch('https://api.dropboxapi.com/2/files/get_temporary_link', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${dbxToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      })
+      const d = await r.json()
+      if (d.link) window.open(d.link, '_blank')
+    } catch (e) {
+      toast('Kunne ikke åbne filen', 'error')
+    }
+  }
+
+  async function deleteUpload(upload) {
+    if (!confirm(`Slet ${upload.filnavn}?`)) return
+    try {
+      if (dbxToken) {
+        await fetch('https://api.dropboxapi.com/2/files/delete_v2', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${dbxToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: upload.dropbox_path })
+        })
+      }
+      await supabase.from('uploads').delete().eq('id', upload.id)
+      setUploads(u => u.filter(x => x.id !== upload.id))
+      toast('Fil slettet')
+    } catch (e) {
+      toast('Fejl ved sletning', 'error')
+    }
+  }
+
   async function saveEdit() {
     setSaving(true)
     const { error } = await supabase.from('sager').update({
@@ -70,17 +198,14 @@ export default function SagDetalje() {
       freelancer_id: editForm.freelancer_id || null,
     }).eq('id', id)
     if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
-    setSaving(false)
-    setEditing(false)
-    fetchSag()
+    setSaving(false); setEditing(false); fetchSag()
     toast('✓ Sag opdateret')
   }
 
   async function saveNoter() {
     setSaving(true)
     await supabase.from('sager').update({ noter }).eq('id', id)
-    setSaving(false)
-    toast('✓ Noter gemt')
+    setSaving(false); toast('✓ Noter gemt')
   }
 
   async function saveMwNummer() {
@@ -91,12 +216,11 @@ export default function SagDetalje() {
 
   async function updateStatus(status) {
     await supabase.from('sager').update({ status }).eq('id', id)
-    setSag(s => ({ ...s, status }))
-    toast('✓ Status opdateret')
+    setSag(s => ({ ...s, status })); toast('✓ Status opdateret')
   }
 
   async function sletSag() {
-    if (!confirm('Slet denne sag permanent? Dette kan ikke fortrydes.')) return
+    if (!confirm('Slet denne sag permanent?')) return
     await supabase.from('sager').delete().eq('id', id)
     navigate('/sager')
   }
@@ -104,20 +228,13 @@ export default function SagDetalje() {
   async function bookFreelancer(fId) {
     const fl = freelancere.find(f => f.id === fId)
     await supabase.from('sager').update({ freelancer_id: fId }).eq('id', id)
-    setFreelancer(fl)
-    setSag(s => ({ ...s, freelancer_id: fId }))
-    setShowBookModal(false)
-    toast(`✓ ${fl?.navn} booket!`)
-    await fetch('/api/send-notification', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'freelancer_booking', mægler: { email: fl?.email, navn: fl?.navn, adresse: sag?.adresse, dato: sag?.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '', tidspunkt: '' } })
-    }).catch(() => {})
+    setFreelancer(fl); setSag(s => ({ ...s, freelancer_id: fId }))
+    setShowBookModal(false); toast(`✓ ${fl?.navn} booket!`)
   }
 
   async function fjernFreelancer() {
     await supabase.from('sager').update({ freelancer_id: null }).eq('id', id)
-    setFreelancer(null)
-    setSag(s => ({ ...s, freelancer_id: null }))
+    setFreelancer(null); setSag(s => ({ ...s, freelancer_id: null }))
     toast('Freelancer fjernet')
   }
 
@@ -128,6 +245,8 @@ export default function SagDetalje() {
   const initials = n => n?.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase() || '?'
   const set = (k, v) => setEditForm(f => ({ ...f, [k]: v }))
 
+  const fileIcon = type => type === 'billede' ? '🖼' : type?.includes('raw') ? '📷' : '📄'
+
   return (
     <div>
       <ToastContainer toasts={toasts} />
@@ -135,7 +254,7 @@ export default function SagDetalje() {
         <div className="back-link" style={{ margin: 0 }} onClick={() => navigate('/sager')}>← Tilbage til sager</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-outline btn-sm" onClick={() => setEditing(!editing)}>
-            {editing ? 'Annuller redigering' : '✏ Rediger sag'}
+            {editing ? 'Annuller' : '✏ Rediger sag'}
           </button>
           <button className="btn btn-red btn-sm" onClick={sletSag}>🗑 Slet</button>
         </div>
@@ -146,7 +265,6 @@ export default function SagDetalje() {
         <span className={`badge badge-${badgeClass(sag.status)}`}>{statusLabel(sag.status)}</span>
       </div>
 
-      {/* REDIGÉR MODAL */}
       {editing && (
         <div className="card" style={{ marginBottom: 16, border: '2px solid var(--pr)' }}>
           <div className="section-hd">Rediger sagsoplysninger</div>
@@ -225,11 +343,10 @@ export default function SagDetalje() {
                 <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. MW-2024-1234" style={{ flex: 1 }} />
                 <button className="btn btn-primary btn-sm" onClick={saveMwNummer}>Gem</button>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Bruges når billederne sendes til Mindworking</div>
             </div>
             {mwNummer
-              ? <div className="ok-box" style={{ marginBottom: 10 }}>✓ Sagsnummer gemt – klar til Mindworking integration</div>
-              : <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Indtast sagsnummer fra Mindworking for at kunne sende billeder</div>
+              ? <div className="ok-box" style={{ marginBottom: 10 }}>✓ Sagsnummer gemt</div>
+              : <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Indtast sagsnummer fra Mindworking</div>
             }
             <button className="btn btn-sm" style={{ background: mwNummer ? 'var(--pr)' : '#8fa8bc', color: '#fff', opacity: mwNummer ? 1 : 0.6, cursor: mwNummer ? 'pointer' : 'not-allowed' }} disabled={!mwNummer}>
               ⚡ Send til Mindworking
@@ -263,9 +380,59 @@ export default function SagDetalje() {
           <div className="card">
             <div className="section-hd">Noter</div>
             <textarea value={noter} onChange={e => setNoter(e.target.value)}
-              style={{ width: '100%', minHeight: 100, padding: 10, border: '1px solid var(--brd)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }}
+              style={{ width: '100%', minHeight: 80, padding: 10, border: '1px solid var(--brd)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }}
               placeholder="Skriv noter til sagen..." />
             <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={saveNoter} disabled={saving}>{saving ? 'Gemmer...' : 'Gem noter'}</button>
+          </div>
+
+          {/* UPLOAD */}
+          <div className="card">
+            <div className="section-hd">Filer & billeder (Dropbox)</div>
+            {!dbxToken ? (
+              <div>
+                <div className="info-box" style={{ marginBottom: 12 }}>Forbind Dropbox for at uploade billeder og filer til denne sag.</div>
+                <button className="btn btn-primary" onClick={connectDropbox}>🔗 Forbind Dropbox</button>
+              </div>
+            ) : (
+              <>
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--pr)' }}
+                  onDragLeave={e => e.currentTarget.style.borderColor = '#c5d3dc'}
+                  onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#c5d3dc'; uploadFiles(e.dataTransfer.files) }}
+                  style={{ border: '2px dashed #c5d3dc', borderRadius: 12, padding: 20, textAlign: 'center', cursor: 'pointer', marginBottom: 12, transition: 'border-color .2s' }}>
+                  <div style={{ fontSize: 24, marginBottom: 6 }}>📂</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                    <strong style={{ color: 'var(--pr)' }}>Klik eller træk filer hertil</strong><br />
+                    <span style={{ fontSize: 11 }}>JPG, RAW, PNG – gemmes i Dropbox under /VaniaGraphics/Sager/</span>
+                  </div>
+                  {uploading && <div style={{ fontSize: 12, color: 'var(--pr)', marginTop: 8, fontWeight: 600 }}>⏳ Uploader...</div>}
+                </div>
+                <input ref={fileInputRef} type="file" multiple accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng" style={{ display: 'none' }} onChange={e => uploadFiles(e.target.files)} />
+
+                {uploads.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
+                      Uploadede filer ({uploads.length})
+                    </div>
+                    {uploads.map(u => (
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '.5px solid var(--brd)' }}>
+                        <span style={{ fontSize: 18 }}>{fileIcon(u.type)}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.filnavn}</div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>{u.uploaded_at ? new Date(u.uploaded_at).toLocaleDateString('da-DK') : ''}</div>
+                        </div>
+                        <button className="btn btn-outline btn-sm" onClick={() => getDropboxLink(u.dropbox_path)}>Åbn</button>
+                        <button className="btn btn-red btn-sm" onClick={() => deleteUpload(u)}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {uploads.length === 0 && !uploading && (
+                  <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>Ingen filer uploadet endnu</div>
+                )}
+              </>
+            )}
           </div>
 
           {sag.bbr_data && (sag.bbr_data.boligareal || sag.bbr_data.grundareal || sag.bbr_data.etager) && (
@@ -294,7 +461,7 @@ export default function SagDetalje() {
           <div className="modal">
             <div className="modal-title">Book freelancer<button className="modal-close" onClick={() => setShowBookModal(false)}>✕</button></div>
             {freelancere.length === 0
-              ? <div className="empty-state"><div className="empty-icon">📷</div>Ingen freelancere – tilføj en under Freelancere</div>
+              ? <div className="empty-state"><div className="empty-icon">📷</div>Ingen freelancere tilgængelige</div>
               : freelancere.map(f => (
                 <div key={f.id} onClick={() => bookFreelancer(f.id)}
                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, border: '.5px solid var(--brd)', borderRadius: 10, marginBottom: 8, cursor: 'pointer' }}
