@@ -1,13 +1,5 @@
 {
-  "functions": {
-    "api/dropbox-upload.js": {
-      "maxDuration": 60
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/dropbox-upload",
-      "dest": "/api/dropbox-upload"
-    }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
