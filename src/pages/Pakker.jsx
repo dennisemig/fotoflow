@@ -70,7 +70,7 @@ export default function Pakker() {
                         <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--grn)', flexShrink: 0 }}></div>{f}
                       </div>
                     ))}
-                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>Op til {p.maks_billeder} billeder · {p.leveringstid}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>Op til {p.max_billeder} billeder · {p.leveringstid}</div>
                   </div>
                   <div style={{ padding: '10px 16px', borderTop: '.5px solid var(--brd)', display: 'flex', gap: 6 }}>
                     <button className="btn btn-outline btn-sm" onClick={() => { setEditItem(p); setShowPakkeModal(true) }}>✏ Rediger</button>
@@ -116,14 +116,14 @@ export default function Pakker() {
 }
 
 function PakkeModal({ item, onClose, onSaved, toast }) {
-  const [form, setForm] = useState({ navn: item?.navn || '', beskrivelse: item?.beskrivelse || '', pris: item?.pris || '', maks_billeder: item?.maks_billeder || 20, leveringstid: item?.leveringstid || '48 timer', popular: item?.popular || false, features: (item?.features || []).join('\n') })
+  const [form, setForm] = useState({ navn: item?.navn || '', beskrivelse: item?.beskrivelse || '', pris: item?.pris || '', max_billeder: item?.max_billeder || 20, leveringstid: item?.leveringstid || '48 timer', popular: item?.popular || false, features: (item?.features || []).join('\n') })
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSave() {
     if (!form.navn || !form.pris) { toast('Udfyld navn og pris', 'error'); return }
     setSaving(true)
-    const data = { navn: form.navn, beskrivelse: form.beskrivelse, pris: parseFloat(form.pris), maks_billeder: parseInt(form.maks_billeder), leveringstid: form.leveringstid, popular: form.popular, features: form.features.split('\n').map(f => f.trim()).filter(Boolean) }
+    const data = { navn: form.navn, beskrivelse: form.beskrivelse, pris: parseFloat(form.pris), max_billeder: parseInt(form.max_billeder), leveringstid: form.leveringstid, popular: form.popular, features: form.features.split('\n').map(f => f.trim()).filter(Boolean) }
     if (item) await supabase.from('pakker').update(data).eq('id', item.id)
     else await supabase.from('pakker').insert([data])
     setSaving(false); onSaved()
@@ -137,7 +137,7 @@ function PakkeModal({ item, onClose, onSaved, toast }) {
         <div className="form-group"><label>Beskrivelse</label><input value={form.beskrivelse} onChange={e => set('beskrivelse', e.target.value)} placeholder="Kort beskrivelse til mægleren..." /></div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="form-group"><label>Pris (kr.) *</label><input type="number" value={form.pris} onChange={e => set('pris', e.target.value)} placeholder="2995" /></div>
-          <div className="form-group"><label>Maks billeder</label><input type="number" value={form.maks_billeder} onChange={e => set('maks_billeder', e.target.value)} /></div>
+          <div className="form-group"><label>Maks billeder</label><input type="number" value={form.max_billeder} onChange={e => set('max_billeder', e.target.value)} /></div>
         </div>
         <div className="form-group">
           <label>Leveringstid</label>
