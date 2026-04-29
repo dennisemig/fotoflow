@@ -16,18 +16,20 @@ export default function Kalender() {
 
   useEffect(() => { fetchSager() }, [year, month])
 
-  async function fetchSager() {
-    const from = new Date(year, month, 1).toISOString().split('T')[0]
-    const to = new Date(year, month + 1, 0).toISOString().split('T')[0]
-    const { data, error } = await supabase
-      .from('sager')
-      .select('id, adresse, dato, status, tidspunkt')
-      .gte('dato', from)
-      .lte('dato', to)
-      .order('dato')
-    if (error) console.error('Kalender fejl:', error)
-    setSager(data || [])
-  }
+async function fetchSager() {
+  const from = `${year}-${String(month + 1).padStart(2, '0')}-01`
+  const to = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`
+  console.log('Henter sager fra', from, 'til', to)
+  const { data, error } = await supabase
+    .from('sager')
+    .select('id, adresse, dato, status, tidspunkt')
+    .gte('dato', from)
+    .lte('dato', to)
+    .order('dato')
+  console.log('Sager hentet:', data, 'Fejl:', error)
+  if (error) console.error('Kalender fejl:', error)
+  setSager(data || [])
+}
 
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1) }
