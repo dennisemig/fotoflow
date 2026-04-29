@@ -1,44 +1,74 @@
-// Denne API genererer kun et upload URL - selve filen uploades direkte til Dropbox
-export const config = { api: { bodyParser: true } }
+export const config = {
+  runtime: 'edge',
+}
 
-const DBX_TOKEN = process.env.DROPBOX_TOKEN
+export default async function handler(req) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Dropbox-API-Arg, Action',
+  }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers })
+  }
 
-  if (req.method === 'OPTIONS') return res.status(200).end()
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-
-  const { action, path, session_id, offset } = req.body
+  const DBX_TOKEN = process.env.DROPBOX_TOKEN
+  const action = req.headers.get('action') || 'upload'
+  const apiArg = req.headers.get('dropbox-api-arg')
 
   try {
     if (action === 'get_token') {
-      // Returner token til klienten så den kan uploade direkte
-      return res.status(200).json({ token: DBX_TOKEN })
+      return new Response(JSON.stringify({ token: DBX_TOKEN }), {
+        status: 200,
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      })
     }
 
-    if (action === 'link') {
-      const r = await fetch('https://api.dropboxapi.com/2/files/get_temporary_link', {
+    if (action === 'link' || action === 'delete') {
+      const body = await req.text()
+      const url = action === 'link'
+        ? 'https://api.dropboxapi.com/2/files/get_temporary_link'
+        : 'https://api.dropboxapi.com/2/files/delete_v2'
+      const r = await fetch(url, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${DBX_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path })
+        body
       })
-      return res.status(r.status).json(await r.json())
+      const data = await r.text()
+      return new Response(data, { status: r.status, headers: { ...headers, 'Content-Type': 'application/json' } })
     }
 
-    if (action === 'delete') {
-      const r = await fetch('https://api.dropboxapi.com/2/files/delete_v2', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${DBX_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path })
-      })
-      return res.status(r.status).json(await r.json())
-    }
+    // Upload - stream direkte til Dropbox
+    const uploadUrl = action === 'start'
+      ? 'https://content.dropboxapi.com/2/files/upload_session/start'
+      : action === 'append'
+        ? 'https://content.dropboxapi.com/2/files/upload_session/append_v2'
+        : action === 'finish'
+          ? 'https://content.dropboxapi.com/2/files/upload_session/finish'
+          : 'https://content.dropboxapi.com/2/files/upload'
 
-    res.status(400).json({ error: 'Unknown action' })
+    const r = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${DBX_TOKEN}`,
+        'Dropbox-API-Arg': apiArg || '{}',
+        'Content-Type': 'application/octet-stream',
+      },
+      body: req.body,
+      duplex: 'half'
+    })
+
+    const data = await r.text()
+    return new Response(data, {
+      status: r.status,
+      headers: { ...headers, 'Content-Type': 'application/json' }
+    })
+
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
+      headers: { ...headers, 'Content-Type': 'application/json' }
+    })
   }
 }
