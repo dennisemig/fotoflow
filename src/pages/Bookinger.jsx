@@ -22,8 +22,35 @@ export default function Bookinger() {
     setLoading(false)
   }
 
-  async function godkend(booking) {
-    // Opret sag fra booking med mægler-info
+// Erstat godkend funktionen i Bookinger.jsx med denne:
+
+async function godkend(booking) {
+    // Hent startadresse fra profil
+    let kmDistance = null
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('startadresse').eq('id', user.id).single()
+        if (profile?.startadresse && booking.adresse) {
+          // Beregn koordinater for startadresse
+          const r1 = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(profile.startadresse)}&per_side=1&struktur=mini`)
+          const d1 = await r1.json()
+          const r2 = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(booking.adresse)}&per_side=1&struktur=mini`)
+          const d2 = await r2.json()
+          if (d1.length > 0 && d2.length > 0) {
+            const fra = d1[0]
+            const til = d2[0]
+            const r3 = await fetch(`https://router.project-osrm.org/route/v1/driving/${fra.x},${fra.y};${til.x},${til.y}?overview=false`)
+            const d3 = await r3.json()
+            if (d3.code === 'Ok' && d3.routes.length > 0) {
+              kmDistance = Math.round(d3.routes[0].distance / 1000 * 10) / 10
+            }
+          }
+        }
+      }
+    } catch (e) { console.error('Km fejl:', e) }
+
+    // Opret sag fra booking med mægler-info og km
     const { data: sag, error } = await supabase.from('sager').insert([{
       adresse: booking.adresse,
       dato: booking.dato,
@@ -35,14 +62,13 @@ export default function Bookinger() {
       maegler_navn: booking.maegler_navn,
       maegler_email: booking.maegler_email,
       maegler_firma: booking.maegler_firma,
+      km_distance: kmDistance,
     }]).select().single()
 
     if (error) { toast('Fejl ved oprettelse af sag: ' + error.message, 'error'); return }
 
-    // Opdater booking status
     await supabase.from('bookings').update({ status: 'godkendt', sag_id: sag.id }).eq('id', booking.id)
 
-    // Send bekræftelsesmail til mægler
     await fetch('/api/send-notification', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -60,10 +86,9 @@ export default function Bookinger() {
       })
     }).catch(() => {})
 
-    toast('✓ Booking godkendt – sag oprettet og bekræftelsesmail sendt!')
+    toast(`✓ Booking godkendt${kmDistance ? ` – ${kmDistance} km beregnet` : ''} – sag oprettet!`)
     fetchBookinger()
   }
-
   async function afvis(booking) {
     if (!confirm('Er du sikker på at du vil afvise denne booking?')) return
     await supabase.from('bookings').update({ status: 'afvist' }).eq('id', booking.id)
