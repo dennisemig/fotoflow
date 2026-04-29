@@ -38,7 +38,7 @@ export default function Kalender() {
   const monthName = new Date(year, month, 1).toLocaleString('da-DK', { month: 'long', year: 'numeric' })
 
 const sagsForDay = day => {
-  const d = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const d = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   return calSager.filter(s => s.dato === d)
 }
 
