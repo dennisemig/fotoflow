@@ -9,6 +9,7 @@ const nav = [
   { to: '/freelancere', icon: '📷', label: 'Freelancere' },
   { to: '/koersel', icon: '🚗', label: 'Kørselsrapport' },
   { to: '/pakker', icon: '📦', label: 'Pakker & Tillæg' },
+  { to: '/bookinger', icon: '🔔', label: 'Bookinger' },
 ]
 
 export default function Layout() {
