@@ -4,8 +4,6 @@ import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
-const CHUNK = 8 * 1024 * 1024 // 8MB chunks
-
 export default function SagDetalje() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -23,25 +21,12 @@ export default function SagDetalje() {
   const [uploads, setUploads] = useState([])
   const [uploading, setUploading] = useState(false)
   const [fileProgress, setFileProgress] = useState({})
-  const [dbxToken, setDbxToken] = useState(null)
   const fileInputRef = useRef()
   const { toasts, toast } = useToast()
 
   useEffect(() => {
-    fetchSag(); fetchFreelancere(); fetchKunder(); fetchUploads(); fetchDbxToken()
+    fetchSag(); fetchFreelancere(); fetchKunder(); fetchUploads()
   }, [id])
-
-  async function fetchDbxToken() {
-    try {
-      const r = await fetch('/api/dropbox-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_token' })
-      })
-      const d = await r.json()
-      if (d.token) setDbxToken(d.token)
-    } catch (e) { console.error('Token fejl:', e) }
-  }
 
   async function fetchSag() {
     const { data } = await supabase.from('sager').select('*').eq('id', id).single()
@@ -55,70 +40,29 @@ export default function SagDetalje() {
   async function fetchKunder() { const { data } = await supabase.from('kunder').select('id, navn').order('navn'); setKunder(data || []) }
   async function fetchUploads() { const { data } = await supabase.from('uploads').select('*').eq('sag_id', id).order('uploaded_at', { ascending: false }); setUploads(data || []) }
 
-  async function dbxFetch(url, headers, body) {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${dbxToken}`, ...headers },
-      body
-    })
-    if (!r.ok) {
-      const e = await r.json().catch(() => ({}))
-      throw new Error(e.error_summary || e.error?.['.tag'] || `HTTP ${r.status}`)
-    }
-    const ct = r.headers.get('content-type') || ''
-    if (ct.includes('json')) return r.json()
-    return null
-  }
-
   async function uploadFiles(files) {
     if (!files?.length) return
-    if (!dbxToken) { toast('Henter Dropbox forbindelse...', 'warning'); await fetchDbxToken(); return }
     setUploading(true)
-    const sagNavn = sag?.adresse?.replace(/[^a-zA-Z0-9æøåÆØÅ ]/g, '_').trim() || id
+    const sagNavn = sag?.adresse?.replace(/[^a-zA-Z0-9æøåÆØÅ]/g, '_').trim() || id
 
     for (const file of Array.from(files)) {
       setFileProgress(p => ({ ...p, [file.name]: 1 }))
       try {
-        const path = `/VaniaGraphics/Sager/${sagNavn}/${file.name}`
+        const filePath = `${id}/${sagNavn}/${Date.now()}_${file.name}`
+        
+        const { error } = await supabase.storage
+          .from('sager')
+          .upload(filePath, file, { upsert: true, cacheControl: '3600' })
+        
+        if (error) throw new Error(error.message)
 
-        if (file.size <= CHUNK) {
-          // Lille fil – direkte upload
-          const res = await dbxFetch(
-            'https://content.dropboxapi.com/2/files/upload',
-            {
-              'Dropbox-API-Arg': JSON.stringify({ path, mode: 'overwrite', autorename: true }),
-              'Content-Type': 'application/octet-stream'
-            },
-            await file.arrayBuffer()
-          )
-          await saveUpload(file, res.path_display)
-        } else {
-          // Stor fil – chunked session
-          const { session_id } = await dbxFetch(
-            'https://content.dropboxapi.com/2/files/upload_session/start',
-            { 'Dropbox-API-Arg': JSON.stringify({ close: false }), 'Content-Type': 'application/octet-stream' },
-            await file.slice(0, CHUNK).arrayBuffer()
-          )
-          setFileProgress(p => ({ ...p, [file.name]: 5 }))
-
-          let offset = CHUNK
-          while (offset + CHUNK < file.size) {
-            await dbxFetch(
-              'https://content.dropboxapi.com/2/files/upload_session/append_v2',
-              { 'Dropbox-API-Arg': JSON.stringify({ cursor: { session_id, offset }, close: false }), 'Content-Type': 'application/octet-stream' },
-              await file.slice(offset, offset + CHUNK).arrayBuffer()
-            )
-            offset += CHUNK
-            setFileProgress(p => ({ ...p, [file.name]: Math.round(offset / file.size * 90) }))
-          }
-
-          const res = await dbxFetch(
-            'https://content.dropboxapi.com/2/files/upload_session/finish',
-            { 'Dropbox-API-Arg': JSON.stringify({ cursor: { session_id, offset }, commit: { path, mode: 'overwrite', autorename: true } }), 'Content-Type': 'application/octet-stream' },
-            await file.slice(offset).arrayBuffer()
-          )
-          await saveUpload(file, res.path_display)
-        }
+        await supabase.from('uploads').insert([{
+          sag_id: id,
+          filnavn: file.name,
+          dropbox_path: filePath,
+          type: /\.(cr2|cr3|nef|arw|dng|raw|rw2)$/i.test(file.name) ? 'raw' : file.type.startsWith('image/') ? 'billede' : 'fil',
+          uploaded_at: new Date().toISOString()
+        }])
 
         setFileProgress(p => ({ ...p, [file.name]: 100 }))
         toast(`✓ ${file.name} uploadet!`)
@@ -133,34 +77,18 @@ export default function SagDetalje() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  async function saveUpload(file, dropboxPath) {
-    await supabase.from('uploads').insert([{
-      sag_id: id, filnavn: file.name, dropbox_path: dropboxPath,
-      type: /\.(cr2|cr3|nef|arw|dng|raw|rw2)$/i.test(file.name) ? 'raw' : file.type.startsWith('image/') ? 'billede' : 'fil',
-      uploaded_at: new Date().toISOString()
-    }])
-  }
-
   async function openFile(path) {
     try {
-      const r = await fetch('/api/dropbox-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'link', path })
-      })
-      const d = await r.json()
-      if (d.link) window.open(d.link, '_blank')
-    } catch (e) { toast('Kunne ikke åbne fil', 'error') }
+      const { data } = await supabase.storage.from('sager').createSignedUrl(path, 3600)
+      if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+      else toast('Kunne ikke åbne fil', 'error')
+    } catch (e) { toast('Fejl', 'error') }
   }
 
   async function deleteUpload(upload) {
     if (!confirm(`Slet ${upload.filnavn}?`)) return
     try {
-      await fetch('/api/dropbox-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', path: upload.dropbox_path })
-      })
+      await supabase.storage.from('sager').remove([upload.dropbox_path])
       await supabase.from('uploads').delete().eq('id', upload.id)
       setUploads(u => u.filter(x => x.id !== upload.id))
       toast('Fil slettet')
@@ -314,13 +242,10 @@ export default function SagDetalje() {
           <div className="card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <div className="section-hd" style={{ margin: 0 }}>Filer & billeder</div>
-              {dbxToken && <div style={{ fontSize: 11, color: 'var(--grn)', fontWeight: 600 }}>✓ Dropbox klar</div>}
+              <div style={{ fontSize: 11, color: 'var(--grn)', fontWeight: 600 }}>✓ Supabase Storage</div>
             </div>
 
-            {!dbxToken ? (
-              <div className="info-box">⏳ Henter Dropbox forbindelse...</div>
-            ) : (
-              <>
+            <>
                 <div
                   onClick={() => !uploading && fileInputRef.current?.click()}
                   onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--pr)' }}
@@ -331,7 +256,7 @@ export default function SagDetalje() {
                   <div style={{ fontSize: 13, color: 'var(--muted)' }}>
                     {uploading
                       ? <strong style={{ color: 'var(--pr)' }}>Uploader direkte til Dropbox...</strong>
-                      : <><strong style={{ color: 'var(--pr)' }}>Klik eller træk filer hertil</strong><br /><span style={{ fontSize: 11 }}>RAW, JPG, PNG – ingen størrelsesgrænse · /VaniaGraphics/Sager/</span></>
+                      : <><strong style={{ color: 'var(--pr)' }}>Klik eller træk filer hertil</strong><br /><span style={{ fontSize: 11 }}>RAW, JPG, PNG – ingen størrelsesgrænse</span></>
                     }
                   </div>
                 </div>
@@ -370,7 +295,6 @@ export default function SagDetalje() {
                   </>
                 ) : !uploading && <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>Ingen filer uploadet endnu</div>}
               </>
-            )}
           </div>
 
           {sag.bbr_data && (sag.bbr_data.boligareal || sag.bbr_data.grundareal || sag.bbr_data.etager) && (
