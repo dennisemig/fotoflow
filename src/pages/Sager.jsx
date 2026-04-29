@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
+const BBR_TOKEN = 'CPbVQka4R26OfpgOBMBi3sb6DnN63UVWn3kieXz844B6WJ0lxXqR8UPbOrM0eFHJ7vFmav9bw7w5pLM5Pcnk9Ws9Xyusxb7Ze'
 
 export default function Sager() {
   const [sager, setSager] = useState([])
@@ -17,7 +18,6 @@ export default function Sager() {
 
   async function fetchSager() {
     setLoading(true)
-    // Hent sager uden join til profiles
     const { data: sagerData, error } = await supabase
       .from('sager')
       .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at')
@@ -26,7 +26,6 @@ export default function Sager() {
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
     if (!sagerData || sagerData.length === 0) { setSager([]); setLoading(false); return }
 
-    // Hent kunder separat
     const kundeIds = [...new Set(sagerData.filter(s => s.kunde_id).map(s => s.kunde_id))]
     let kundeMap = {}
     if (kundeIds.length > 0) {
@@ -34,7 +33,6 @@ export default function Sager() {
       if (kunderData) kunderData.forEach(k => { kundeMap[k.id] = k })
     }
 
-    // Hent freelancere separat
     const flIds = [...new Set(sagerData.filter(s => s.freelancer_id).map(s => s.freelancer_id))]
     let flMap = {}
     if (flIds.length > 0) {
@@ -81,7 +79,7 @@ export default function Sager() {
                   <tr key={s.id} onClick={() => navigate(`/sager/${s.id}`)}>
                     <td><b>{s.kunde?.navn || '—'}</b></td>
                     <td>{s.adresse || '—'}</td>
-                    <td>{s.dato ? new Date(s.dato).toLocaleDateString('da-DK') : '—'}</td>
+                    <td>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
                     <td style={{ textTransform: 'capitalize' }}>{s.type || '—'}</td>
                     <td>{s.freelancer?.navn || <span style={{ color: 'var(--muted)', fontSize: 12 }}>Ingen</span>}</td>
                     <td><span className={`badge badge-${badgeClass(s.status)}`}>{statusLabel(s.status)}</span></td>
@@ -116,10 +114,49 @@ function OpretSagModal({ onClose, onSaved, toast }) {
     if (adresse.length < 6) return
     setBbrLoading(true)
     try {
-      const r = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1`)
-      const d = await r.json()
-      if (d.length > 0) setBbr({ vejnavn: d[0].vejnavn, postnr: d[0].postnr })
-    } catch (e) { }
+      // Trin 1: Find adresse ID
+      const r1 = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`)
+      const d1 = await r1.json()
+      if (!d1 || d1.length === 0) { setBbrLoading(false); return }
+
+      const adresseId = d1[0].id
+      const adgAdrId = d1[0].adgangsadresseid
+
+      // Trin 2: Hent BBR enheds data
+      const r2 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/enhed?AdresseIdentificerer=${adresseId}&MedDybde=true&token=${BBR_TOKEN}`)
+      const d2 = await r2.json()
+
+      let boligareal = null
+      let etager = null
+
+      if (d2 && d2.length > 0) {
+        const enhed = d2[0]
+        boligareal = enhed.enh020EnhedensAreal || enhed.enh021ArealTilBeboelse || null
+      }
+
+      // Trin 3: Hent BBR bygnings data
+      const r3 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning?AdresseIdentificerer=${adgAdrId}&MedDybde=true&token=${BBR_TOKEN}`)
+      const d3 = await r3.json()
+
+      let grundareal = null
+      if (d3 && d3.length > 0) {
+        const bygning = d3[0]
+        grundareal = bygning.byg041BebyggetAreal || null
+        etager = bygning.byg054AntalEtager || null
+      }
+
+      setBbr({
+        adresseId,
+        adgAdrId,
+        boligareal,
+        grundareal,
+        etager,
+        vejnavn: d1[0].vejnavn,
+        postnr: d1[0].postnr
+      })
+    } catch (e) {
+      console.log('BBR fejl:', e)
+    }
     setBbrLoading(false)
   }
 
@@ -149,8 +186,10 @@ function OpretSagModal({ onClose, onSaved, toast }) {
         <div className="form-group">
           <label>Adresse *</label>
           <input value={form.adresse} onChange={e => set('adresse', e.target.value)} onBlur={e => lookupBBR(e.target.value)} placeholder="f.eks. Lyngvigvej 12, 2750 Ballerup" autoFocus />
-          {bbrLoading && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>⏳ Verificerer adresse...</div>}
-          {bbr && <div style={{ fontSize: 12, color: 'var(--grn)', marginTop: 4 }}>✓ Adresse fundet</div>}
+          {bbrLoading && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>⏳ Henter BBR-data...</div>}
+          {bbr && <div style={{ fontSize: 12, color: 'var(--grn)', marginTop: 4 }}>
+            ✓ Adresse fundet{bbr.boligareal ? ` · ${bbr.boligareal} m² boligareal` : ''}{bbr.etager ? ` · ${bbr.etager} etager` : ''}
+          </div>}
         </div>
         <div className="form-group"><label>Kunde (valgfrit)</label>
           <select value={form.kunde_id} onChange={e => set('kunde_id', e.target.value)}>
