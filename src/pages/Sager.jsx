@@ -19,7 +19,7 @@ export default function Sager() {
     setLoading(true)
     const { data, error } = await supabase
       .from('sager')
-      .select('*, kunder(navn), profiles(full_name)')
+      .select('*, kunder(navn), freelancer:freelancer_id(full_name)')
       .order('created_at', { ascending: false })
     if (error) console.error('Fejl:', error)
     setSager(data || [])
@@ -54,7 +54,7 @@ export default function Sager() {
                   <td>{s.adresse || '—'}</td>
                   <td>{s.dato ? new Date(s.dato).toLocaleDateString('da-DK') : '—'}</td>
                   <td>{s.type || '—'}</td>
-                  <td>{s.profiles?.full_name || <span style={{color:'var(--muted)',fontSize:12}}>Ingen</span>}</td>
+                  <td>{s.freelancer?.full_name || <span style={{color:'var(--muted)',fontSize:12}}>Ingen</span>}</td>
                   <td><span className={`badge badge-${badgeClass(s.status)}`}>{statusLabel(s.status)}</span></td>
                   <td onClick={e=>e.stopPropagation()}><button className="btn btn-outline btn-sm" onClick={()=>navigate(`/sager/${s.id}`)}>Se sag</button></td>
                 </tr>
