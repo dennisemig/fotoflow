@@ -1,3 +1,4 @@
+import SkiftPassword from './SkiftPassword'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
@@ -97,6 +98,15 @@ export default function Indstillinger() {
           <div className="form-group"><label>Startadresse (bruges til km-beregning)</label><input value={form.startadresse} onChange={e => setForm(f => ({ ...f, startadresse: e.target.value }))} placeholder="Din hjemmeadresse..." /></div>
           <button className="btn btn-primary btn-sm" onClick={saveProfil} disabled={saving}>{saving ? 'Gemmer...' : 'Gem profil'}</button>
         </div>
+        
+           {/* SKIFT ADGANGSKODE */}
+        <div className="card">
+          <div className="section-hd">Skift adgangskode</div>
+          <SkiftPassword toast={toast} />
+        </div>
+
+        {/* ARBEJDSTIDER */}
+        <div className="card">
 
         {/* ARBEJDSTIDER */}
         <div className="card">
