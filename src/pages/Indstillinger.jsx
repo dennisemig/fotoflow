@@ -107,9 +107,6 @@ export default function Indstillinger() {
 
         {/* ARBEJDSTIDER */}
         <div className="card">
-
-        {/* ARBEJDSTIDER */}
-        <div className="card">
           <div className="section-hd">Arbejdstider & tilgængelighed</div>
           <div className="info-box" style={{ marginBottom: 14 }}>
             Disse tider vises som ledige tidsslots på din bookingside. Mæglere kan kun booke inden for disse tider.
