@@ -236,61 +236,13 @@ export default function SagDetalje() {
           </div>
 
           <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div className="section-hd" style={{ margin: 0 }}>Filer & billeder</div>
-              <div style={{ fontSize: 11, color: 'var(--grn)', fontWeight: 600 }}>✓ Supabase Storage</div>
-            </div>
-
-            <>
-                <div
-                  onClick={() => !uploading && fileInputRef.current?.click()}
-                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--pr)' }}
-                  onDragLeave={e => e.currentTarget.style.borderColor = '#c5d3dc'}
-                  onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#c5d3dc'; if (!uploading) uploadFiles(e.dataTransfer.files) }}
-                  style={{ border: '2px dashed #c5d3dc', borderRadius: 12, padding: 20, textAlign: 'center', cursor: uploading ? 'default' : 'pointer', marginBottom: 12 }}>
-                  <div style={{ fontSize: 24, marginBottom: 6 }}>{uploading ? '⏳' : '📂'}</div>
-                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                    {uploading
-                      ? <strong style={{ color: 'var(--pr)' }}>Uploader direkte til Dropbox...</strong>
-                      : <><strong style={{ color: 'var(--pr)' }}>Klik eller træk filer hertil</strong><br /><span style={{ fontSize: 11 }}>RAW, JPG, PNG – ingen størrelsesgrænse</span></>
-                    }
-                  </div>
-                </div>
-                <input ref={fileInputRef} type="file" multiple accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.rw2" style={{ display: 'none' }} onChange={e => uploadFiles(e.target.files)} />
-
-                {Object.keys(fileProgress).length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    {Object.entries(fileProgress).map(([name, pct]) => (
-                      <div key={name} style={{ marginBottom: 6 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>{name}</span>
-                          <span style={{ color: pct < 0 ? 'var(--red)' : pct === 100 ? 'var(--grn)' : 'var(--muted)', fontWeight: 600 }}>{pct < 0 ? 'Fejl' : pct === 100 ? '✓' : `${pct}%`}</span>
-                        </div>
-                        <div style={{ height: 4, background: '#e8edf1', borderRadius: 4 }}>
-                          <div style={{ height: '100%', width: `${Math.max(0, pct)}%`, background: pct < 0 ? 'var(--red)' : pct === 100 ? 'var(--grn)' : 'var(--pr)', borderRadius: 4, transition: 'width .3s' }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {uploads.length > 0 ? (
-                  <>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Uploadede filer ({uploads.length})</div>
-                    {uploads.map(u => (
-                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '.5px solid var(--brd)' }}>
-                        <span style={{ fontSize: 18 }}>{fileIcon(u.type)}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.filnavn}</div>
-                          <div style={{ fontSize: 10, color: 'var(--muted)' }}>{u.uploaded_at ? new Date(u.uploaded_at).toLocaleDateString('da-DK') : ''}</div>
-                        </div>
-                        <button className="btn btn-outline btn-sm" onClick={() => openFile(u.dropbox_path)}>Åbn</button>
-                        <button className="btn btn-red btn-sm" onClick={() => deleteUpload(u)}>✕</button>
-                      </div>
-                    ))}
-                  </>
-                ) : !uploading && <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>Ingen filer uploadet endnu</div>}
-              </>
+            <div className="section-hd">Filer & billeder</div>
+            <BilledeGalleri
+              sagId={id}
+              sagAdresse={sag?.adresse}
+              mwNummer={sag?.mindworking_sagsnummer}
+              toast={toast}
+            />
           </div>
 
           {sag.bbr_data && (sag.bbr_data.boligareal || sag.bbr_data.grundareal || sag.bbr_data.etager) && (
