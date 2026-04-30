@@ -29,7 +29,7 @@ export default function SagDetalje() {
     const { data } = await supabase.from('sager').select('*').eq('id', id).single()
     if (!data) return
     setSag(data); setNoter(data.noter || ''); setMwNummer(data.mindworking_sagsnummer || '')
-    setEditForm({ adresse: data.adresse || '', dato: data.dato || '', tidspunkt: data.tidspunkt ? String(data.tidspunkt).slice(0,5) : '', type: data.type || 'ejendom', maks_billeder: data.maks_billeder || 20, kunde_id: data.kunde_id || '', freelancer_id: data.freelancer_id || '' })
+    setEditForm({ adresse: data.adresse || '', dato: data.dato || '', tidspunkt: data.tidspunkt ? String(data.tidspunkt).slice(0,5) : '', tidspunkt_slut: data.tidspunkt_slut ? String(data.tidspunkt_slut).slice(0,5) : '', type: data.type || 'ejendom', maks_billeder: data.maks_billeder || 20, kunde_id: data.kunde_id || '', freelancer_id: data.freelancer_id || '' })
     if (data.kunde_id) { const { data: k } = await supabase.from('kunder').select('*').eq('id', data.kunde_id).single(); setKunde(k) }
     if (data.freelancer_id) { const { data: f } = await supabase.from('freelancere').select('*').eq('id', data.freelancer_id).single(); setFreelancer(f) }
   }
@@ -97,7 +97,7 @@ export default function SagDetalje() {
 
   async function saveEdit() {
     setSaving(true)
-    await supabase.from('sager').update({ adresse: editForm.adresse, dato: editForm.dato, tidspunkt: editForm.tidspunkt || null, type: editForm.type, maks_billeder: editForm.maks_billeder, kunde_id: editForm.kunde_id || null, freelancer_id: editForm.freelancer_id || null }).eq('id', id)
+    await supabase.from('sager').update({ adresse: editForm.adresse, dato: editForm.dato, tidspunkt: editForm.tidspunkt || null, tidspunkt_slut: editForm.tidspunkt_slut || null, type: editForm.type, maks_billeder: editForm.maks_billeder, kunde_id: editForm.kunde_id || null, freelancer_id: editForm.freelancer_id || null }).eq('id', id)
     setSaving(false); setEditing(false); fetchSag(); toast('✓ Sag opdateret')
   }
   async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); toast('✓ Noter gemt') }
@@ -138,7 +138,8 @@ export default function SagDetalje() {
           <div className="form-group"><label>Kunde</label><select value={editForm.kunde_id} onChange={e => set('kunde_id', e.target.value)}><option value="">— Ingen —</option>{kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}</select></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group"><label>Dato</label><input type="date" value={editForm.dato} onChange={e => set('dato', e.target.value)} /></div>
-            <div className="form-group"><label>Tidspunkt</label><input type="time" value={editForm.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+            <div className="form-group"><label>Fra</label><input type="time" value={editForm.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+            <div className="form-group"><label>Til</label><input type="time" value={editForm.tidspunkt_slut || ''} onChange={e => set('tidspunkt_slut', e.target.value)} /></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group"><label>Type</label><select value={editForm.type} onChange={e => set('type', e.target.value)}>{TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}</select></div>
@@ -158,7 +159,7 @@ export default function SagDetalje() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               {[
                 { lbl: 'Dato', val: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—' },
-                { lbl: 'Tidspunkt', val: sag.tidspunkt ? String(sag.tidspunkt).slice(0,5) : '—' },
+                { lbl: 'Tidspunkt', val: sag.tidspunkt ? `${String(sag.tidspunkt).slice(0,5)}${sag.tidspunkt_slut ? ` – ${String(sag.tidspunkt_slut).slice(0,5)}` : ''}` : '—' },
                 { lbl: 'Type', val: sag.type || '—' },
                 { lbl: 'Maks billeder', val: sag.maks_billeder || 20 },
               ].map((r, i) => (

@@ -31,7 +31,7 @@ export default function Booking() {
     const today = new Date().toISOString().split('T')[0]
     const { data } = await supabase
       .from('sager')
-      .select('dato, tidspunkt')
+      .select('dato, tidspunkt, tidspunkt_slut')
       .gte('dato', today)
       .not('status', 'eq', 'afsluttet')
     setOptagedeDatoer(data || [])
