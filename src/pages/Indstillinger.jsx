@@ -1,4 +1,3 @@
-import SkiftPassword from './SkiftPassword'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
@@ -23,6 +22,9 @@ export default function Indstillinger() {
   const [arbejdstider, setArbejdstider] = useState(DEFAULT_ARBEJDSTIDER)
   const [saving, setSaving] = useState(false)
   const [savingTider, setSavingTider] = useState(false)
+  const [nytPassword, setNytPassword] = useState('')
+  const [bekraeftPassword, setBekraeftPassword] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
   const { toasts, toast } = useToast()
 
   useEffect(() => {
@@ -42,46 +44,43 @@ export default function Indstillinger() {
     await supabase.from('profiles').update({
       full_name: form.full_name, telefon: form.telefon, startadresse: form.startadresse
     }).eq('id', profile?.id)
-    setSaving(false); toast('✓ Profil gemt')
+    setSaving(false)
+    toast('✓ Profil gemt')
   }
 
   async function saveArbejdstider() {
     setSavingTider(true)
-    const { error } = await supabase.from('indstillinger').upsert({
-      noegle: 'arbejdstider', vaerdi: arbejdstider
-    }, { onConflict: 'noegle' })
-    if (error) {
-      // Prøv at oprette tabellen hvis den ikke findes
-      await supabase.rpc('exec_sql', { sql: `
-        CREATE TABLE IF NOT EXISTS indstillinger (
-          noegle TEXT PRIMARY KEY,
-          vaerdi JSONB,
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      ` }).catch(() => {})
-      await supabase.from('indstillinger').upsert({ noegle: 'arbejdstider', vaerdi: arbejdstider }, { onConflict: 'noegle' })
-    }
-    setSavingTider(false); toast('✓ Arbejdstider gemt')
+    await supabase.from('indstillinger').upsert({ noegle: 'arbejdstider', vaerdi: arbejdstider }, { onConflict: 'noegle' })
+    setSavingTider(false)
+    toast('✓ Arbejdstider gemt')
+  }
+
+  async function skiftPassword() {
+    if (nytPassword.length < 6) { toast('Password skal være mindst 6 tegn', 'error'); return }
+    if (nytPassword !== bekraeftPassword) { toast('Passwords matcher ikke', 'error'); return }
+    setSavingPassword(true)
+    const { error } = await supabase.auth.updateUser({ password: nytPassword })
+    if (error) toast('Fejl: ' + error.message, 'error')
+    else { toast('✓ Adgangskode opdateret!'); setNytPassword(''); setBekraeftPassword('') }
+    setSavingPassword(false)
   }
 
   function setDag(dagIdx, felt, vaerdi) {
     setArbejdstider(prev => ({ ...prev, [dagIdx]: { ...prev[dagIdx], [felt]: vaerdi } }))
   }
 
-  // Generer tidsslots baseret på arbejdstider
   function getSlots(fra, til) {
     const slots = []
     let current = fra
     while (current < til) {
       slots.push(current)
-      const [h, m] = current.split(':').map(Number)
-      const next = `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-      current = next
+      const [h] = current.split(':').map(Number)
+      current = `${String(h + 1).padStart(2, '0')}:00`
     }
     return slots
   }
 
-  const bookingLink = `${import.meta.env.VITE_APP_URL || 'https://fotoflow-theta.vercel.app'}/book/vaniagraphics`
+  const bookingLink = `${import.meta.env.VITE_APP_URL || 'https://app.vaniagraphics.dk'}/book/vaniagraphics`
 
   return (
     <div>
@@ -98,11 +97,21 @@ export default function Indstillinger() {
           <div className="form-group"><label>Startadresse (bruges til km-beregning)</label><input value={form.startadresse} onChange={e => setForm(f => ({ ...f, startadresse: e.target.value }))} placeholder="Din hjemmeadresse..." /></div>
           <button className="btn btn-primary btn-sm" onClick={saveProfil} disabled={saving}>{saving ? 'Gemmer...' : 'Gem profil'}</button>
         </div>
-        
-           {/* SKIFT ADGANGSKODE */}
+
+        {/* SKIFT ADGANGSKODE */}
         <div className="card">
           <div className="section-hd">Skift adgangskode</div>
-          <SkiftPassword toast={toast} />
+          <div className="form-group">
+            <label>Nyt password</label>
+            <input type="password" value={nytPassword} onChange={e => setNytPassword(e.target.value)} placeholder="Mindst 6 tegn" />
+          </div>
+          <div className="form-group">
+            <label>Bekræft nyt password</label>
+            <input type="password" value={bekraeftPassword} onChange={e => setBekraeftPassword(e.target.value)} placeholder="Gentag password" />
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={skiftPassword} disabled={savingPassword || !nytPassword || !bekraeftPassword}>
+            {savingPassword ? 'Gemmer...' : 'Skift adgangskode'}
+          </button>
         </div>
 
         {/* ARBEJDSTIDER */}
@@ -111,9 +120,7 @@ export default function Indstillinger() {
           <div className="info-box" style={{ marginBottom: 14 }}>
             Disse tider vises som ledige tidsslots på din bookingside. Mæglere kan kun booke inden for disse tider.
           </div>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {/* HEADER */}
             <div style={{ display: 'grid', gridTemplateColumns: '100px 60px 1fr 20px 1fr', gap: 8, padding: '6px 0', borderBottom: '1.5px solid var(--brd)', marginBottom: 4 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' }}>Dag</div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' }}>Åben</div>
@@ -121,7 +128,6 @@ export default function Indstillinger() {
               <div></div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' }}>Til</div>
             </div>
-
             {[1,2,3,4,5,6,0].map((dagIdx, i) => {
               const dag = arbejdstider[dagIdx] || { aktiv: false, fra: '08:00', til: '16:00' }
               return (
@@ -133,18 +139,12 @@ export default function Indstillinger() {
                       <span className="tslider"></span>
                     </label>
                   </div>
-                  <select
-                    value={dag.fra}
-                    onChange={e => setDag(dagIdx, 'fra', e.target.value)}
-                    disabled={!dag.aktiv}
+                  <select value={dag.fra} onChange={e => setDag(dagIdx, 'fra', e.target.value)} disabled={!dag.aktiv}
                     style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--brd)', fontSize: 13, fontFamily: 'inherit', background: dag.aktiv ? '#fff' : '#f9f9f9' }}>
                     {TIDER.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>–</div>
-                  <select
-                    value={dag.til}
-                    onChange={e => setDag(dagIdx, 'til', e.target.value)}
-                    disabled={!dag.aktiv}
+                  <select value={dag.til} onChange={e => setDag(dagIdx, 'til', e.target.value)} disabled={!dag.aktiv}
                     style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--brd)', fontSize: 13, fontFamily: 'inherit', background: dag.aktiv ? '#fff' : '#f9f9f9' }}>
                     {TIDER.filter(t => t > dag.fra).map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
@@ -153,7 +153,6 @@ export default function Indstillinger() {
             })}
           </div>
 
-          {/* PREVIEW */}
           <div style={{ marginTop: 16, padding: 14, background: 'var(--bg)', borderRadius: 10, border: '.5px solid var(--brd)' }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 8 }}>FORHÅNDSVISNING AF TIDSSLOTS</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -170,16 +169,13 @@ export default function Indstillinger() {
                   <div key={dagIdx} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
                     <div style={{ width: 80, fontWeight: 500 }}>{DAGE[i]}</div>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {slots.map(s => (
-                        <div key={s} style={{ padding: '2px 8px', borderRadius: 20, background: 'var(--pr)', color: '#fff', fontSize: 11, fontWeight: 600 }}>{s}</div>
-                      ))}
+                      {slots.map(s => <div key={s} style={{ padding: '2px 8px', borderRadius: 20, background: 'var(--pr)', color: '#fff', fontSize: 11, fontWeight: 600 }}>{s}</div>)}
                     </div>
                   </div>
                 )
               })}
             </div>
           </div>
-
           <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} onClick={saveArbejdstider} disabled={savingTider}>
             {savingTider ? 'Gemmer...' : 'Gem arbejdstider'}
           </button>
@@ -201,13 +197,7 @@ export default function Indstillinger() {
         {/* EMAIL */}
         <div className="card">
           <div className="section-hd">Email (Resend)</div>
-          <div className="ok-box" style={{ marginBottom: 14 }}>✓ Resend er konfigureret – mails sendes fra dennis@vaniagraphics.dk</div>
-        </div>
-
-        {/* DROPBOX */}
-        <div className="card">
-          <div className="section-hd">Dropbox</div>
-          <div className="ok-box" style={{ marginBottom: 14 }}>✓ Dropbox er forbundet via server-token</div>
+          <div className="ok-box">✓ Resend er konfigureret – mails sendes fra dennis@vaniagraphics.dk</div>
         </div>
 
         {/* MINDWORKING */}
