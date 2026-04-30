@@ -16,41 +16,31 @@ export default function Kalender() {
 
   useEffect(() => { fetchSager() }, [year, month])
 
-async function fetchSager() {
-  const from = `${year}-${String(month + 1).padStart(2, '0')}-01`
-  const to = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`
-  console.log('Henter sager fra', from, 'til', to)
-  const { data, error } = await supabase
-    .from('sager')
-    .select('id, adresse, dato, status, tidspunkt')
-    .gte('dato', from)
-    .lte('dato', to)
-    .order('dato')
-  console.log('Sager hentet:', data, 'Fejl:', error)
-  if (error) console.error('Kalender fejl:', error)
-  setSager(data || [])
-}
+  async function fetchSager() {
+    const from = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    const to = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`
+    const { data, error } = await supabase
+      .from('sager')
+      .select('id, adresse, dato, status, tidspunkt, tidspunkt_slut')
+      .gte('dato', from)
+      .lte('dato', to)
+      .order('dato')
+    if (error) console.error('Kalender fejl:', error)
+    setSager(data || [])
+  }
 
-  const prevMonth = () => {
-    if (month === 0) { setMonth(11); setYear(y => y - 1) }
-    else setMonth(m => m - 1)
-  }
-  const nextMonth = () => {
-    if (month === 11) { setMonth(0); setYear(y => y + 1) }
-    else setMonth(m => m + 1)
-  }
+  const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }
+  const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }
 
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const firstDay = (new Date(year, month, 1).getDay() || 7) - 1
   const todayStr = new Date().toISOString().split('T')[0]
   const monthName = new Date(year, month, 1).toLocaleString('da-DK', { month: 'long', year: 'numeric' })
 
-const sagsForDay = (day) => {
-  const d = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  const result = sager.filter(s => s.dato === d)
-  if (day === 30) console.log('Dag 30:', d, 'Sager:', sager.map(s => s.dato), 'Match:', result)
-  return result
-}
+  const sagsForDay = (day) => {
+    const d = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    return sager.filter(s => s.dato === d)
+  }
 
   const todayDay = new Date().getDate()
   const todayMonth = new Date().getMonth()
@@ -84,28 +74,18 @@ const sagsForDay = (day) => {
             const daySager = sagsForDay(day)
             const isWeekend = ((firstDay + i) % 7) >= 5
             return (
-              <div
-                key={day}
+              <div key={day}
                 onClick={() => { setSelectedDate(dayStr); setShowModal(true) }}
-                style={{
-                  minHeight: 72,
-                  background: isToday ? '#eef4f8' : isWeekend ? '#fafafa' : 'transparent',
-                  borderRadius: 8, padding: '5px 6px',
-                  border: isToday ? '2px solid var(--pr)' : '.5px solid var(--brd)',
-                  cursor: 'pointer'
-                }}
+                style={{ minHeight: 72, background: isToday ? '#eef4f8' : isWeekend ? '#fafafa' : 'transparent', borderRadius: 8, padding: '5px 6px', border: isToday ? '2px solid var(--pr)' : '.5px solid var(--brd)', cursor: 'pointer' }}
                 onMouseEnter={e => { if (!isToday) e.currentTarget.style.background = '#f5f7f9' }}
-                onMouseLeave={e => { if (!isToday) e.currentTarget.style.background = isWeekend ? '#fafafa' : 'transparent' }}
-              >
+                onMouseLeave={e => { if (!isToday) e.currentTarget.style.background = isWeekend ? '#fafafa' : 'transparent' }}>
                 <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, color: isToday ? 'var(--pr)' : isWeekend ? 'var(--muted)' : 'var(--txt)', marginBottom: 3 }}>{day}</div>
                 {daySager.map(s => (
-                  <div
-                    key={s.id}
+                  <div key={s.id}
                     onClick={e => { e.stopPropagation(); navigate('/sager/' + s.id) }}
                     style={{ fontSize: 9, fontWeight: 600, padding: '2px 5px', borderRadius: 4, marginBottom: 2, cursor: 'pointer', background: statusColor(s.status), color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={s.adresse}
-                  >
-                    {s.tidspunkt ? String(s.tidspunkt).slice(0, 5) + ' ' : ''}{s.adresse ? s.adresse.split(',')[0] : ''}
+                    title={s.adresse}>
+                    {s.tidspunkt ? String(s.tidspunkt).slice(0, 5) : ''}{s.tidspunkt_slut ? `–${String(s.tidspunkt_slut).slice(0, 5)}` : ''}{' '}{s.adresse ? s.adresse.split(',')[0] : ''}
                   </div>
                 ))}
                 {daySager.length === 0 && <div style={{ fontSize: 9, color: '#ddd', marginTop: 2 }}>+ Tilføj</div>}
@@ -135,19 +115,18 @@ const sagsForDay = (day) => {
         {sager.length === 0
           ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>Ingen sager denne måned – klik på en dag for at oprette</div>
           : sager.map(s => (
-            <div
-              key={s.id}
+            <div key={s.id}
               onClick={() => navigate('/sager/' + s.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--bg)', borderRadius: 8, marginBottom: 6, cursor: 'pointer' }}
               onMouseEnter={e => e.currentTarget.style.background = '#e8edf1'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--bg)'}
-            >
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--bg)'}>
               <div style={{ width: 10, height: 10, borderRadius: 3, background: statusColor(s.status), flexShrink: 0 }}></div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 500, fontSize: 13 }}>{s.adresse}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                   {new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })}
                   {s.tidspunkt ? ' · kl. ' + String(s.tidspunkt).slice(0, 5) : ''}
+                  {s.tidspunkt_slut ? ' – ' + String(s.tidspunkt_slut).slice(0, 5) : ''}
                 </div>
               </div>
               <span className={'badge badge-' + (s.status === 'aktiv' ? 'active' : s.status === 'afventer' ? 'pending' : s.status === 'ny' ? 'new' : 'done')}>
@@ -171,7 +150,7 @@ const sagsForDay = (day) => {
 }
 
 function OpretSagModal({ dato, onClose, onSaved, toast }) {
-  const [form, setForm] = useState({ adresse: '', tidspunkt: '10:00', type: 'ejendom', kunde_id: '', freelancer_id: '', maks_billeder: 20, noter: '' })
+  const [form, setForm] = useState({ adresse: '', tidspunkt: '09:00', tidspunkt_slut: '11:00', type: 'ejendom', kunde_id: '', freelancer_id: '', maks_billeder: 20, noter: '' })
   const [kunder, setKunder] = useState([])
   const [freelancere, setFreelancere] = useState([])
   const [saving, setSaving] = useState(false)
@@ -191,6 +170,7 @@ function OpretSagModal({ dato, onClose, onSaved, toast }) {
       adresse: form.adresse,
       dato: dato,
       tidspunkt: form.tidspunkt || null,
+      tidspunkt_slut: form.tidspunkt_slut || null,
       type: form.type,
       kunde_id: form.kunde_id || null,
       freelancer_id: form.freelancer_id || null,
@@ -219,12 +199,16 @@ function OpretSagModal({ dato, onClose, onSaved, toast }) {
           </select>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="form-group"><label>Tidspunkt</label><input type="time" value={form.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+          <div className="form-group"><label>Fra</label><input type="time" value={form.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+          <div className="form-group"><label>Til</label><input type="time" value={form.tidspunkt_slut} onChange={e => set('tidspunkt_slut', e.target.value)} /></div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="form-group"><label>Type</label>
             <select value={form.type} onChange={e => set('type', e.target.value)}>
               {TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
             </select>
           </div>
+          <div className="form-group"><label>Maks billeder</label><input type="number" value={form.maks_billeder} onChange={e => set('maks_billeder', parseInt(e.target.value))} /></div>
         </div>
         <div className="form-group"><label>Freelancer (valgfrit)</label>
           <select value={form.freelancer_id} onChange={e => set('freelancer_id', e.target.value)}>
@@ -232,7 +216,6 @@ function OpretSagModal({ dato, onClose, onSaved, toast }) {
             {freelancere.map(f => <option key={f.id} value={f.id}>{f.navn}</option>)}
           </select>
         </div>
-        <div className="form-group"><label>Maks billeder</label><input type="number" value={form.maks_billeder} onChange={e => set('maks_billeder', parseInt(e.target.value))} /></div>
         <div className="form-group"><label>Noter</label><textarea rows={2} value={form.noter} onChange={e => set('noter', e.target.value)} placeholder="Sagsbeskrivelse..." /></div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>Annuller</button>
