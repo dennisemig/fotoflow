@@ -69,13 +69,29 @@ export default function Booking() {
     return slots
   }
 
+  function tidTilMin(tid) {
+    if (!tid) return null
+    const [h, m] = String(tid).slice(0, 5).split(':').map(Number)
+    return h * 60 + m
+  }
+
+  function slotErLedigt(slot, sagsForDay) {
+    const slotStart = tidTilMin(slot)
+    const slotSlut = slotStart + 90 // booking tager 1.5 time
+    return !sagsForDay.some(s => {
+      const sagStart = tidTilMin(s.tidspunkt)
+      if (!sagStart) return false
+      const sagSlut = s.tidspunkt_slut ? tidTilMin(s.tidspunkt_slut) : sagStart + 90
+      return slotStart < sagSlut && slotSlut > sagStart
+    })
+  }
+
   function getDatoStatus(dayStr) {
     const sagsForDay = optagedeDatoer.filter(s => s.dato === dayStr)
     const ugedag = new Date(dayStr + 'T12:00:00').getDay()
     const slots = getSlotsForDay(ugedag)
     if (slots.length === 0) return 'lukket'
-    const optagetSlots = sagsForDay.map(s => s.tidspunkt ? String(s.tidspunkt).slice(0, 5) : null).filter(Boolean)
-    const ledigeSlots = slots.filter(s => !optagetSlots.includes(s))
+    const ledigeSlots = slots.filter(s => slotErLedigt(s, sagsForDay))
     if (ledigeSlots.length === 0) return 'optaget'
     if (sagsForDay.length > 0) return 'delvis'
     return 'ledig'
@@ -85,11 +101,8 @@ export default function Booking() {
     if (!dato) return []
     const ugedag = new Date(dato + 'T12:00:00').getDay()
     const slots = getSlotsForDay(ugedag)
-    const optagetSlots = optagedeDatoer
-      .filter(s => s.dato === dato)
-      .map(s => s.tidspunkt ? String(s.tidspunkt).slice(0, 5) : null)
-      .filter(Boolean)
-    return slots.filter(s => !optagetSlots.includes(s))
+    const sagsForDay = optagedeDatoer.filter(s => s.dato === dato)
+    return slots.filter(s => slotErLedigt(s, sagsForDay))
   }
 
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
