@@ -44,6 +44,9 @@ export default function Indstillinger() {
     await supabase.from('profiles').update({
       full_name: form.full_name, telefon: form.telefon, startadresse: form.startadresse
     }).eq('id', profile?.id)
+    // Genindlæs fra databasen så formen ikke nulstilles
+    const { data } = await supabase.from('profiles').select('*').eq('id', profile?.id).single()
+    if (data) setForm({ full_name: data.full_name || '', telefon: data.telefon || '', startadresse: data.startadresse || '' })
     setSaving(false)
     toast('✓ Profil gemt')
   }
