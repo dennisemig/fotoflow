@@ -59,22 +59,37 @@ export default function SagDetalje() {
   }
 
   async function leverSag() {
-    if (!confirm('Marker sagen som leveret og send mail til mægler?')) return
-    await supabase.from('sager').update({ status: 'leveret' }).eq('id', id)
-    setSag(s => ({ ...s, status: 'leveret' }))
+    if (!confirm('Marker sagen som leveret og send gallerilink til mægler?')) return
+
+    // Generer unikt token
+    const token = crypto.randomUUID()
+    const udloeber = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    const galleriLink = `${window.location.origin}/levering/${token}`
+
+    await supabase.from('sager').update({ status: 'leveret', levering_token: token, levering_udloeber: udloeber }).eq('id', id)
+    setSag(s => ({ ...s, status: 'leveret', levering_token: token }))
+
+    // Tæl billeder
     const { count } = await supabase.from('uploads').select('*', { count: 'exact', head: true }).eq('sag_id', id)
+
     const modtager = sag.maegler_email || kunde?.email
     const navn = sag.maegler_navn || kunde?.navn
+
     if (modtager) {
       await fetch('/api/send-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'levering',
-          mægler: { email: modtager, navn, adresse: sag.adresse, dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—', antal_billeder: count || '—' }
+          mægler: {
+            email: modtager, navn, adresse: sag.adresse,
+            dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—',
+            antal_billeder: count || 0,
+            galleri_link: galleriLink
+          }
         })
       }).catch(() => {})
-      toast('✓ Sag leveret – mail sendt til mægler!')
+      toast(`✓ Sag leveret – gallerilink sendt til mægler!`)
     } else {
       toast('✓ Sag markeret som leveret')
     }
