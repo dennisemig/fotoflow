@@ -49,18 +49,10 @@ export default function Levering() {
 
     setBilleder(billedMedLinks)
 
-    // Thumbnails
-    billedMedLinks.forEach(b => {
-      if (b.type === 'billede' || /\.(jpg|jpeg|png|gif|webp)$/i.test(b.filnavn)) {
-        supabase.storage.from('sager').createSignedUrl(b.dropbox_path, 3600, {
-          transform: { width: 400, height: 400, resize: 'cover' }
-        }).then(({ data }) => {
-          if (data?.signedUrl) setThumbnails(t => ({ ...t, [b.id]: data.signedUrl }))
-        }).catch(() => {
-          setThumbnails(t => ({ ...t, [b.id]: b.url }))
-        })
-      }
-    })
+    // Brug direkte URL som thumbnail – virker på alle enheder
+    const thumbMap = {}
+    billedMedLinks.forEach(b => { thumbMap[b.id] = b.url })
+    setThumbnails(thumbMap)
 
     setLoading(false)
   }
