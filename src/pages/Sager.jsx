@@ -188,6 +188,8 @@ function OpretSagModal({ onClose, onSaved, toast }) {
     const { error } = await supabase.from('sager').insert([{
       adresse: form.adresse,
       dato: form.dato,
+      tidspunkt: form.tidspunkt || null,
+      tidspunkt_slut: form.tidspunkt_slut || null,
       type: form.type,
       freelancer_id: form.freelancer_id || null,
       kunde_id: form.kunde_id || null,
