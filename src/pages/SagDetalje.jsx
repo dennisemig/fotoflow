@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
+import BilledeGalleri from './BilledeGalleri'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
 export default function SagDetalje() {
@@ -18,14 +19,10 @@ export default function SagDetalje() {
   const [showBookModal, setShowBookModal] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({})
-  const [uploads, setUploads] = useState([])
-  const [uploading, setUploading] = useState(false)
-  const [fileProgress, setFileProgress] = useState({})
-  const fileInputRef = useRef()
   const { toasts, toast } = useToast()
 
   useEffect(() => {
-    fetchSag(); fetchFreelancere(); fetchKunder(); fetchUploads()
+    fetchSag(); fetchFreelancere(); fetchKunder()
   }, [id])
 
   async function fetchSag() {
@@ -38,7 +35,6 @@ export default function SagDetalje() {
   }
   async function fetchFreelancere() { const { data } = await supabase.from('freelancere').select('id, navn, email').eq('aktiv', true); setFreelancere(data || []) }
   async function fetchKunder() { const { data } = await supabase.from('kunder').select('id, navn').order('navn'); setKunder(data || []) }
-  async function fetchUploads() { const { data } = await supabase.from('uploads').select('*').eq('sag_id', id).order('uploaded_at', { ascending: false }); setUploads(data || []) }
 
   async function uploadFiles(files) {
     if (!files?.length) return
