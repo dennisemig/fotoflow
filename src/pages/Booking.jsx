@@ -373,6 +373,10 @@ export default function Booking() {
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: 5 }}>Mæglerfirma</label>
                 <input value={form.maegler_firma} onChange={e => set('maegler_firma', e.target.value)} placeholder="EDC, Danbolig, Nybolig..." style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
               </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: 5 }}>Sagsnummer</label>
+                <input value={form.sagsnummer} onChange={e => set('sagsnummer', e.target.value)} placeholder="f.eks. 12345 eller MW-2024-1234" style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </div>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', display: 'block', marginBottom: 5 }}>Noter til fotografen</label>
                 <textarea value={form.noter} onChange={e => set('noter', e.target.value)} placeholder="Adgangskode til ejendommen, særlige ønsker..." rows={3} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
