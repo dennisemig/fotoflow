@@ -15,6 +15,7 @@ import Pakker from './pages/Pakker'
 import Bookinger from './pages/Bookinger'
 import Indstillinger from './pages/Indstillinger'
 import Booking from './pages/Booking'
+import Levering from './pages/Levering'
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
@@ -33,6 +34,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/book/:slug" element={<Booking />} />
+      <Route path="/levering/:token" element={<Levering />} />
       <Route path="/" element={<Protected><Layout /></Protected>}>
         <Route index element={<Dashboard />} />
         <Route path="sager" element={<Sager />} />
