@@ -36,59 +36,48 @@ export default function SagDetalje() {
   async function fetchFreelancere() { const { data } = await supabase.from('freelancere').select('id, navn, email').eq('aktiv', true); setFreelancere(data || []) }
   async function fetchKunder() { const { data } = await supabase.from('kunder').select('id, navn').order('navn'); setKunder(data || []) }
 
-  async function uploadFiles(files) {
-    if (!files?.length) return
-    setUploading(true)
-    const sagNavn = sag?.adresse?.replace(/[^a-zA-Z0-9æøåÆØÅ]/g, '_').trim() || id
-
-    for (const file of Array.from(files)) {
-      setFileProgress(p => ({ ...p, [file.name]: 1 }))
-      try {
-        const filePath = `${id}/${sagNavn}/${Date.now()}_${file.name}`
-        
-        const { error } = await supabase.storage
-          .from('sager')
-          .upload(filePath, file, { upsert: true, cacheControl: '3600' })
-        
-        if (error) throw new Error(error.message)
-
-        await supabase.from('uploads').insert([{
-          sag_id: id,
-          filnavn: file.name,
-          dropbox_path: filePath,
-          type: /\.(cr2|cr3|nef|arw|dng|raw|rw2)$/i.test(file.name) ? 'raw' : file.type.startsWith('image/') ? 'billede' : 'fil',
-          uploaded_at: new Date().toISOString()
-        }])
-
-        setFileProgress(p => ({ ...p, [file.name]: 100 }))
-        toast(`✓ ${file.name} uploadet!`)
-      } catch (e) {
-        console.error('Upload fejl:', e)
-        toast(`Fejl: ${file.name} – ${e.message}`, 'error')
-        setFileProgress(p => ({ ...p, [file.name]: -1 }))
-      }
+  async function bookFreelancerOgSendMail(fId) {
+    const fl = freelancere.find(f => f.id === fId)
+    await supabase.from('sager').update({ freelancer_id: fId }).eq('id', id)
+    setFreelancer(fl); setSag(s => ({ ...s, freelancer_id: fId })); setShowBookModal(false)
+    if (fl?.email) {
+      await fetch('/api/send-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'freelancer_booking',
+          mægler: {
+            email: fl.email, navn: fl.navn, adresse: sag.adresse,
+            dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—',
+            tidspunkt: sag.tidspunkt ? String(sag.tidspunkt).slice(0, 5) : '—',
+            type: sag.type, noter: sag.noter
+          }
+        })
+      }).catch(() => {})
     }
-    setUploading(false); fetchUploads()
-    setTimeout(() => setFileProgress({}), 4000)
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    toast(`✓ ${fl?.navn} booket – mail sendt!`)
   }
 
-  async function openFile(path) {
-    try {
-      const { data } = await supabase.storage.from('sager').createSignedUrl(path, 3600)
-      if (data?.signedUrl) window.open(data.signedUrl, '_blank')
-      else toast('Kunne ikke åbne fil', 'error')
-    } catch (e) { toast('Fejl', 'error') }
-  }
-
-  async function deleteUpload(upload) {
-    if (!confirm(`Slet ${upload.filnavn}?`)) return
-    try {
-      await supabase.storage.from('sager').remove([upload.dropbox_path])
-      await supabase.from('uploads').delete().eq('id', upload.id)
-      setUploads(u => u.filter(x => x.id !== upload.id))
-      toast('Fil slettet')
-    } catch (e) { toast('Fejl ved sletning', 'error') }
+  async function leverSag() {
+    if (!confirm('Marker sagen som leveret og send mail til mægler?')) return
+    await supabase.from('sager').update({ status: 'leveret' }).eq('id', id)
+    setSag(s => ({ ...s, status: 'leveret' }))
+    const { count } = await supabase.from('uploads').select('*', { count: 'exact', head: true }).eq('sag_id', id)
+    const modtager = sag.maegler_email || kunde?.email
+    const navn = sag.maegler_navn || kunde?.navn
+    if (modtager) {
+      await fetch('/api/send-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'levering',
+          mægler: { email: modtager, navn, adresse: sag.adresse, dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—', antal_billeder: count || '—' }
+        })
+      }).catch(() => {})
+      toast('✓ Sag leveret – mail sendt til mægler!')
+    } else {
+      toast('✓ Sag markeret som leveret')
+    }
   }
 
   async function saveEdit() {
@@ -100,7 +89,7 @@ export default function SagDetalje() {
   async function saveMwNummer() { await supabase.from('sager').update({ mindworking_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, mindworking_sagsnummer: mwNummer })); toast('✓ Gemt') }
   async function updateStatus(status) { await supabase.from('sager').update({ status }).eq('id', id); setSag(s => ({ ...s, status })); toast('✓ Status opdateret') }
   async function sletSag() { if (!confirm('Slet sagen permanent?')) return; await supabase.from('sager').delete().eq('id', id); navigate('/sager') }
-  async function bookFreelancer(fId) { const fl = freelancere.find(f => f.id === fId); await supabase.from('sager').update({ freelancer_id: fId }).eq('id', id); setFreelancer(fl); setSag(s => ({ ...s, freelancer_id: fId })); setShowBookModal(false); toast(`✓ ${fl?.navn} booket!`) }
+  async function bookFreelancer(fId) { await bookFreelancerOgSendMail(fId) }
   async function fjernFreelancer() { await supabase.from('sager').update({ freelancer_id: null }).eq('id', id); setFreelancer(null); setSag(s => ({ ...s, freelancer_id: null })); toast('Fjernet') }
 
   if (!sag) return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>Indlæser...</div>
@@ -188,11 +177,18 @@ export default function SagDetalje() {
 
           <div className="card">
             <div className="section-hd">Opdater status</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {['ny','aktiv','afventer','afsluttet','leveret'].map(s => (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+              {['ny','aktiv','afventer','afsluttet'].map(s => (
                 <button key={s} onClick={() => updateStatus(s)} className={`btn btn-sm ${sag.status === s ? 'btn-primary' : 'btn-outline'}`}>{statusLabel(s)}</button>
               ))}
             </div>
+            {sag.status !== 'leveret' ? (
+              <button onClick={leverSag} className="btn btn-sm" style={{ background: '#2e7d4f', color: '#fff', width: '100%', justifyContent: 'center' }}>
+                📸 Marker som leveret – send mail til mægler
+              </button>
+            ) : (
+              <div className="ok-box">✓ Sag leveret – mægler er notificeret</div>
+            )}
           </div>
 
           <div className="card">
