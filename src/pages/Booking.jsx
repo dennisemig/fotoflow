@@ -131,7 +131,12 @@ export default function Booking() {
   }, 0)
 
   async function handleSend() {
-    if (!form.adresse || !form.dato || !form.tidspunkt || !form.maegler_email || !form.pakke_id) return
+    if (!form.adresse) { alert('Udfyld adresse'); return }
+    if (!form.dato) { alert('Vælg en dato'); return }
+    if (!form.tidspunkt) { alert('Vælg et tidspunkt'); return }
+    if (!form.pakke_id) { alert('Vælg en pakke'); return }
+    if (!form.maegler_navn) { alert('Udfyld dit navn'); return }
+    if (!form.maegler_email) { alert('Udfyld din email'); return }
     setSending(true)
     const { error } = await supabase.from('bookings').insert([{
       adresse: form.adresse, dato: form.dato, tidspunkt: form.tidspunkt,
@@ -401,7 +406,11 @@ export default function Booking() {
 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setStep(3)}>← Tilbage</button>
-                <button className="btn btn-green" style={{ flex: 1, justifyContent: 'center' }} disabled={sending || !form.maegler_email || !form.maegler_navn} onClick={handleSend}>
+                <button
+                  className="btn btn-green"
+                  style={{ flex: 1, justifyContent: 'center', opacity: sending ? 0.7 : 1 }}
+                  onClick={handleSend}
+                  onTouchEnd={e => { e.preventDefault(); handleSend() }}>
                   {sending ? 'Sender...' : 'Send booking →'}
                 </button>
               </div>
