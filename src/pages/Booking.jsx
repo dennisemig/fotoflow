@@ -408,9 +408,9 @@ export default function Booking() {
                 <button className="btn btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setStep(3)}>← Tilbage</button>
                 <button
                   className="btn btn-green"
-                  style={{ flex: 1, justifyContent: 'center', opacity: sending ? 0.7 : 1 }}
-                  onClick={handleSend}
-                  onTouchEnd={e => { e.preventDefault(); handleSend() }}>
+                  style={{ flex: 1, justifyContent: 'center', opacity: sending ? 0.7 : 1, cursor: 'pointer', WebkitAppearance: 'none' }}
+                  type="button"
+                  onClick={handleSend}>
                   {sending ? 'Sender...' : 'Send booking →'}
                 </button>
               </div>
