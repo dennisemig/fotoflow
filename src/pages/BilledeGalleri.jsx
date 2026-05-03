@@ -104,31 +104,30 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
     if (!mwNummer) { toast?.('Sæt Mindworking sagsnummer først!', 'error'); return }
     if (valgte.size === 0) { toast?.('Vælg mindst ét billede', 'error'); return }
     setSending(true)
-
-    // Hent signerede URLs for valgte billeder sorteret efter tag
-    const valgteBilleder = uploads
-      .filter(u => valgte.has(u.id))
-      .sort((a, b) => (a.bruger_tag || 'Andet').localeCompare(b.bruger_tag || 'Andet'))
-
-    const links = []
-    for (const u of valgteBilleder) {
-      const { data } = await supabase.storage.from('sager').createSignedUrl(u.dropbox_path, 86400)
-      if (data?.signedUrl) links.push({
-        navn: u.filnavn,
-        tag: u.bruger_tag || 'Ikke tagget',
-        url: data.signedUrl
+    try {
+      const valgteBilleder = uploads
+        .filter(u => valgte.has(u.id))
+        .sort((a, b) => (a.bruger_tag || 'Andet').localeCompare(b.bruger_tag || 'Andet'))
+      const billeder = []
+      for (const u of valgteBilleder) {
+        const { data } = await supabase.storage.from('sager').createSignedUrl(u.dropbox_path, 86400)
+        if (data?.signedUrl) billeder.push({ navn: u.filnavn, url: data.signedUrl, tag: u.bruger_tag || 'Billede' })
+      }
+      const r = await fetch('/api/mindworking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upload_billeder', caseNo: mwNummer, billeder })
       })
+      const result = await r.json()
+      if (result.success) {
+        toast?.(`✓ ${result.uploadet} af ${result.total} billeder uploadet til Mindworking!`)
+        setValgte(new Set())
+      } else {
+        toast?.('Fejl: ' + result.error, 'error')
+      }
+    } catch (e) {
+      toast?.('Mindworking fejl: ' + e.message, 'error')
     }
-
-    // Gruppér efter tag
-    const grouped = {}
-    links.forEach(l => {
-      if (!grouped[l.tag]) grouped[l.tag] = []
-      grouped[l.tag].push(l)
-    })
-
-    console.log('Mindworking upload klar:', { sagsnummer: mwNummer, billeder: grouped })
-    toast?.(`✓ ${links.length} billeder klar – Mindworking API implementeres når dokumentation modtages`)
     setSending(false)
   }
 
