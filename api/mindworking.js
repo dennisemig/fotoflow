@@ -3,7 +3,7 @@ const MW_CLIENT_ID = process.env.MW_CLIENT_ID
 const MW_SECRET = process.env.MW_SECRET
 
 async function getToken() {
-  const r = await fetch('https://nybolig.mindworking.eu/connect/token', {
+  const r = await fetch('https://login.mindworking.eu/connect/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
