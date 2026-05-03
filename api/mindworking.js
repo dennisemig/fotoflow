@@ -3,7 +3,6 @@ const MW_CLIENT_ID = process.env.MW_CLIENT_ID
 const MW_SECRET = process.env.MW_SECRET
 
 async function getToken() {
-  // OAuth2 client credentials flow
   const r = await fetch('https://nybolig.mindworking.eu/connect/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -14,24 +13,27 @@ async function getToken() {
       scope: 'media'
     })
   })
-  const d = await r.json()
-  if (!d.access_token) throw new Error('Kunne ikke hente Mindworking token: ' + JSON.stringify(d))
+  const text = await r.text()
+  let d
+  try { d = JSON.parse(text) } catch (e) { throw new Error('Token svar ikke JSON: ' + text.slice(0, 200)) }
+  if (!d.access_token) throw new Error('Ingen token: ' + JSON.stringify(d))
   return d.access_token
 }
 
-async function graphql(token, query, variables = {}) {
+async function gql(token, query, variables = {}) {
   const r = await fetch(MW_ENDPOINT, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ query, variables })
   })
-  const d = await r.json()
+  const text = await r.text()
+  let d
+  try { d = JSON.parse(text) } catch (e) { throw new Error('GraphQL svar ikke JSON: ' + text.slice(0, 200)) }
   if (d.errors) throw new Error(d.errors[0].message)
   return d.data
 }
+
+
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -48,7 +50,7 @@ export default async function handler(req, res) {
 
     if (action === 'test') {
       // Test forbindelsen
-      const data = await graphql(token, `
+      const data = await gql(token, `
         query {
           viewer {
             shopByShopNo(shopNo: "N260142") {
@@ -62,7 +64,7 @@ export default async function handler(req, res) {
 
     if (action === 'get_case') {
       // Hent sag fra Mindworking
-      const data = await graphql(token, `
+      const data = await gql(token, `
         query GetCase($shopNo: String!, $caseNo: String!) {
           viewer {
             caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) {
@@ -93,7 +95,7 @@ export default async function handler(req, res) {
       }
 
       // Hent case ID fra Mindworking
-      const caseData = await graphql(token, `
+      const caseData = await gql(token, `
         query GetCase($shopNo: String!, $caseNo: String!) {
           viewer {
             caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) {
@@ -115,7 +117,7 @@ export default async function handler(req, res) {
       for (const billede of sorterede) {
         try {
           // 1. Opret media placeholder i Mindworking
-          const createData = await graphql(token, `
+          const createData = await gql(token, `
             mutation uploadMedia($caseId: ID!) {
               createMedia(input: { caseId: $caseId }) {
                 id
@@ -139,7 +141,7 @@ export default async function handler(req, res) {
           })
 
           // 3. Opdater med tag, position og beskrivelse
-          await graphql(token, `
+          await gql(token, `
             mutation updateMedia($id: ID!, $position: Int!, $tags: [String!], $mediaType: String!) {
               updateMedias(input: {
                 medias: [{
