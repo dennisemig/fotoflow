@@ -16,6 +16,8 @@ async function getToken() {
   let d
   try { d = JSON.parse(text) } catch (e) { throw new Error('Token svar ikke JSON: ' + text.slice(0, 200)) }
   if (!d.access_token) throw new Error('Ingen token: ' + JSON.stringify(d))
+  console.log('Token type:', d.token_type)
+  console.log('Token scope:', d.scope)
   return d.access_token
 }
 
