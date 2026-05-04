@@ -136,15 +136,22 @@ export default async function handler(req, res) {
       for (const billede of sorterede) {
         try {
           // 1. Opret media placeholder i Mindworking
+          console.log('Opretter media for caseId:', caseId)
           const createData = await gql(token, `
             mutation uploadMedia($caseId: ID!) {
               createMedia(input: { caseId: $caseId }) {
                 id
                 fileName
+                description
               }
             }
           `, { caseId })
 
+          console.log('createMedia svar:', JSON.stringify(createData))
+          if (!createData.createMedia) {
+            resultater.push({ navn: billede.navn, success: false, error: 'createMedia returnerede null' })
+            continue
+          }
           const mediaId = createData.createMedia.id
 
           // 2. Hent filen fra Supabase og upload til Mindworking
