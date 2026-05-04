@@ -1,4 +1,4 @@
-const MW_ENDPOINT = 'https://nybolig.mindworking.eu/graphql'
+const MW_ENDPOINT = 'https://api.mindworking.eu/graphql'
 const MW_CLIENT_ID = process.env.MW_CLIENT_ID
 const MW_SECRET = process.env.MW_SECRET
 
