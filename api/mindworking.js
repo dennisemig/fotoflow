@@ -3,13 +3,16 @@ const MW_CLIENT_ID = process.env.MW_CLIENT_ID
 const MW_SECRET = process.env.MW_SECRET
 
 async function getToken() {
+  // Basic Auth header: base64(client_id:client_secret)
+  const basicAuth = Buffer.from(`${MW_CLIENT_ID}:${MW_SECRET}`).toString('base64')
   const r = await fetch('https://iam.mindworking.eu/auth/realms/nybolig/protocol/openid-connect/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { 
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${basicAuth}`
+    },
     body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: MW_CLIENT_ID,
-      client_secret: MW_SECRET
+      grant_type: 'client_credentials'
     })
   })
   const text = await r.text()
