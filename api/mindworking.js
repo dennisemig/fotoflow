@@ -113,6 +113,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Mangler caseNo eller billeder' })
       }
 
+      console.log('Søger efter sag med shopNo: N260142, caseNo:', caseNo)
       // Hent case ID fra Mindworking
       const caseData = await gql(token, `
         query GetCase($shopNo: String!, $caseNo: String!) {
