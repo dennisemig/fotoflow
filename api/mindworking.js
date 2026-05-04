@@ -20,12 +20,20 @@ async function getToken() {
 }
 
 async function gql(token, query, variables = {}) {
+  console.log('GraphQL kald til:', MW_ENDPOINT)
+  console.log('Token (første 20 tegn):', token?.slice(0, 20))
   const r = await fetch(MW_ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    headers: { 
+      'Content-Type': 'application/json', 
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    },
     body: JSON.stringify({ query, variables })
   })
+  console.log('GraphQL status:', r.status)
   const text = await r.text()
+  console.log('GraphQL svar (første 100):', text.slice(0, 100))
   let d
   try { d = JSON.parse(text) } catch (e) { throw new Error('GraphQL svar ikke JSON: ' + text.slice(0, 200)) }
   if (d.errors) throw new Error(d.errors[0].message)
