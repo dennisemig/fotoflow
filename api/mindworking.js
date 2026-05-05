@@ -146,31 +146,23 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Fil størrelse:', fileBlob.size, 'bytes')
 
-          // Trin 1: Opret media placeholder via JSON GraphQL
-          const createData = await gql(token, `
-            mutation {
-              createMedia(input: { caseId: "${caseId}" }) {
-                id
-                fileName
-              }
-            }
-          `)
-
-          console.log('createMedia svar:', JSON.stringify(createData))
-          if (!createData?.createMedia?.id) {
-            resultater.push({ navn: billede.navn, success: false, error: 'createMedia fejlede' })
-            continue
-          }
-          const mediaId = createData.createMedia.id
-          console.log('Media ID:', mediaId)
-
-          // Trin 2: Upload fil via multipart til media endpoint
+          // Send createMedia MED fil i samme multipart kald
           const formData = new FormData()
-          formData.append('file', fileBlob, billede.navn)
+          
+          // GraphQL multipart spec: https://github.com/jaydenseric/graphql-multipart-request-spec
+          formData.append('operations', JSON.stringify({
+            query: `mutation ($caseId: ID!, $file: Upload!) { 
+              createMedia(input: { caseId: $caseId, file: $file }) { 
+                id fileName 
+              } 
+            }`,
+            variables: { caseId: caseId, file: null }
+          }))
+          formData.append('map', JSON.stringify({ "1": ["variables.file"] }))
+          formData.append('1', fileBlob, billede.navn)
 
-          const uploadUrl = `https://nybolig.mindworking.eu/api/integrations/media/${mediaId}/upload`
-          console.log('Uploader til:', uploadUrl)
-          const uploadR = await fetch(uploadUrl, {
+          console.log('Sender multipart createMedia+fil til Mindworking')
+          const uploadR = await fetch(MW_ENDPOINT, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: formData
@@ -179,11 +171,24 @@ export default async function handler(req, res) {
           const uploadText = await uploadR.text()
           console.log('Upload svar:', uploadText.slice(0, 300))
 
-          // Tjek om upload lykkedes
           if (!uploadR.ok) {
             resultater.push({ navn: billede.navn, success: false, error: `Upload fejlede: ${uploadR.status} ${uploadText.slice(0, 100)}` })
             continue
           }
+
+          let uploadData
+          try { uploadData = JSON.parse(uploadText) } catch (e) {
+            resultater.push({ navn: billede.navn, success: false, error: 'Svar ikke JSON' })
+            continue
+          }
+
+          if (!uploadData.data?.createMedia?.id) {
+            resultater.push({ navn: billede.navn, success: false, error: 'createMedia fejlede: ' + uploadText.slice(0, 200) })
+            continue
+          }
+
+          const mediaId = uploadData.data.createMedia.id
+          console.log('Media oprettet med ID:', mediaId)
 
           // 3. Opdater med tag, position og beskrivelse
           await gql(token, `
