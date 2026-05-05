@@ -146,48 +146,28 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Fil størrelse:', fileBlob.size, 'bytes')
 
-          // Send createMedia MED fil i samme multipart kald
-          const formData = new FormData()
+          // Konverter fil til base64 og send som JSON
+          const arrayBuffer = await fileBlob.arrayBuffer()
+          const base64 = Buffer.from(arrayBuffer).toString('base64')
+          const mimeType = fileBlob.type || 'image/jpeg'
           
-          // GraphQL multipart spec: https://github.com/jaydenseric/graphql-multipart-request-spec
-          formData.append('operations', JSON.stringify({
-            query: `mutation ($caseId: ID!, $file: Upload!) { 
+          console.log('Sender base64 fil til Mindworking')
+          const createData = await gql(token, `
+            mutation ($caseId: ID!, $file: Upload!) { 
               createMedia(input: { caseId: $caseId, file: $file }) { 
                 id fileName 
               } 
             }`,
-            variables: { caseId: caseId, file: null }
-          }))
-          formData.append('map', JSON.stringify({ "1": ["variables.file"] }))
-          formData.append('1', fileBlob, billede.navn)
+            { caseId, file: `data:${mimeType};base64,${base64}` }
+          )
 
-          console.log('Sender multipart createMedia+fil til Mindworking')
-          const uploadR = await fetch(MW_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: formData
-          })
-          console.log('Upload status:', uploadR.status)
-          const uploadText = await uploadR.text()
-          console.log('Upload svar:', uploadText.slice(0, 300))
-
-          if (!uploadR.ok) {
-            resultater.push({ navn: billede.navn, success: false, error: `Upload fejlede: ${uploadR.status} ${uploadText.slice(0, 100)}` })
+          console.log('createMedia svar:', JSON.stringify(createData))
+          if (!createData?.createMedia?.id) {
+            resultater.push({ navn: billede.navn, success: false, error: 'createMedia fejlede: ' + JSON.stringify(createData) })
             continue
           }
 
-          let uploadData
-          try { uploadData = JSON.parse(uploadText) } catch (e) {
-            resultater.push({ navn: billede.navn, success: false, error: 'Svar ikke JSON' })
-            continue
-          }
-
-          if (!uploadData.data?.createMedia?.id) {
-            resultater.push({ navn: billede.navn, success: false, error: 'createMedia fejlede: ' + uploadText.slice(0, 200) })
-            continue
-          }
-
-          const mediaId = uploadData.data.createMedia.id
+          const mediaId = createData.createMedia.id
           console.log('Media oprettet med ID:', mediaId)
 
           // 3. Opdater med tag, position og beskrivelse
