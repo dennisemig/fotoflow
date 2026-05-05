@@ -146,10 +146,9 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Fil størrelse:', fileBlob.size, 'bytes')
 
-          // Send query og fil separat
+          // Send mutation og fil separat
           const formData = new FormData()
-          formData.append('query', `mutation { createMedia(input: { caseId: "${caseId}" }) { id fileName } }`)
-          formData.append('variables', JSON.stringify({ caseId }))
+          formData.append('mutation', `mutation { createMedia(input: { caseId: "${caseId}" }) { id fileName } }`)
           formData.append('file', fileBlob, billede.navn)
 
           console.log('Sender multipart til Mindworking')
