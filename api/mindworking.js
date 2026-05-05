@@ -146,19 +146,10 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Fil størrelse:', fileBlob.size, 'bytes')
 
-          // Send GraphQL mutation med fil som multipart (GraphQL multipart request spec)
-          const query = `mutation uploadMedia($caseId: ID!, $file: Upload!) {
-              createMedia(input: { caseId: $caseId, file: $file }) {
-                id
-                fileName
-              }
-            }`
-
+          // Send som multipart med query og fil direkte
           const formData = new FormData()
-          formData.append('query', query)
-          formData.append('variables', JSON.stringify({ caseId, file: null }))
-          formData.append('map', JSON.stringify({ "0": ["variables.file"] }))
-          formData.append('0', fileBlob, billede.navn)
+          formData.append('query', `mutation { createMedia(input: { caseId: "${caseId}" }) { id fileName } }`)
+          formData.append('file', fileBlob, billede.navn)
 
           console.log('Sender multipart til Mindworking')
           const uploadR = await fetch(MW_ENDPOINT, {
