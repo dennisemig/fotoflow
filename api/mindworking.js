@@ -179,30 +179,11 @@ export default async function handler(req, res) {
           const uploadText = await uploadR.text()
           console.log('Upload svar:', uploadText.slice(0, 300))
 
-          console.log('Sender multipart til Mindworking')
-          const uploadR = await fetch(MW_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: formData
-          })
-
-          console.log('Upload status:', uploadR.status)
-          const uploadText = await uploadR.text()
-          console.log('Upload svar:', uploadText.slice(0, 300))
-
-          let uploadData
-          try { uploadData = JSON.parse(uploadText) } catch (e) {
-            resultater.push({ navn: billede.navn, success: false, error: 'Svar ikke JSON: ' + uploadText.slice(0, 100) })
+          // Tjek om upload lykkedes
+          if (!uploadR.ok) {
+            resultater.push({ navn: billede.navn, success: false, error: `Upload fejlede: ${uploadR.status} ${uploadText.slice(0, 100)}` })
             continue
           }
-
-          if (!uploadData.data?.createMedia?.id) {
-            resultater.push({ navn: billede.navn, success: false, error: 'createMedia fejlede: ' + uploadText.slice(0, 100) })
-            continue
-          }
-
-          const mediaId = uploadData.data.createMedia.id
-          console.log('Media oprettet med ID:', mediaId)
 
           // 3. Opdater med tag, position og beskrivelse
           await gql(token, `
