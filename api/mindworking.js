@@ -78,52 +78,58 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
-          // Forsøg 1: REST upload endpoint
-          const formData = new FormData()
-          formData.append('file', fileBlob, billede.navn)
-          formData.append('filename', billede.navn)
-          formData.append('mimeType', fileBlob.type || 'image/jpeg')
-          formData.append('caseId', caseId)
+          // Multipart med query direkte + fil som separat felt
+          const mfData = new FormData()
+          mfData.append('query', `mutation { createMedia(input: { caseId: "${caseId}" }) { id fileName } }`)
+          mfData.append('0', fileBlob, billede.navn)
 
-          const restUrl = 'https://nybolig.mindworking.eu/api/integrations/media/upload'
-          console.log('Prøver REST upload til:', restUrl)
-          const restR = await fetch(restUrl, {
+          console.log('Prøver multipart query+fil')
+          const mfR = await fetch(MW_ENDPOINT, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
-            body: formData
+            body: mfData
           })
-          console.log('REST status:', restR.status)
-          const restText = await restR.text()
-          console.log('REST svar:', restText.slice(0, 300))
+          console.log('Multipart status:', mfR.status)
+          const mfText = await mfR.text()
+          console.log('Multipart svar:', mfText.slice(0, 300))
 
-          if (restR.ok) {
-            let restData
-            try { restData = JSON.parse(restText) } catch {}
-            const mediaId = restData?.id || restData?.mediaId || 'ok'
-            resultater.push({ navn: billede.navn, success: true, mediaId })
-            position++
-            continue
+          if (mfR.ok) {
+            let mfJson
+            try { mfJson = JSON.parse(mfText) } catch {}
+            if (mfJson?.data?.createMedia?.id) {
+              resultater.push({ navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id })
+              position++
+              continue
+            }
           }
 
-          // Forsøg 2: Alternativt REST endpoint med caseId i URL
-          const restUrl2 = `https://nybolig.mindworking.eu/api/integrations/media/upload/${caseId}`
-          console.log('Prøver alternativt REST upload til:', restUrl2)
-          const restR2 = await fetch(restUrl2, {
+          // Forsøg 2: query + variables + fil
+          const mfData2 = new FormData()
+          mfData2.append('query', `mutation uploadMedia($caseId: ID!) { createMedia(input: { caseId: $caseId }) { id fileName } }`)
+          mfData2.append('variables', JSON.stringify({ caseId }))
+          mfData2.append('file', fileBlob, billede.navn)
+
+          console.log('Prøver multipart query+variables+fil')
+          const mfR2 = await fetch(MW_ENDPOINT, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
-            body: formData
+            body: mfData2
           })
-          console.log('REST2 status:', restR2.status)
-          const restText2 = await restR2.text()
-          console.log('REST2 svar:', restText2.slice(0, 300))
+          console.log('Multipart2 status:', mfR2.status)
+          const mfText2 = await mfR2.text()
+          console.log('Multipart2 svar:', mfText2.slice(0, 300))
 
-          if (restR2.ok) {
-            resultater.push({ navn: billede.navn, success: true })
-            position++
-            continue
+          if (mfR2.ok) {
+            let mfJson2
+            try { mfJson2 = JSON.parse(mfText2) } catch {}
+            if (mfJson2?.data?.createMedia?.id) {
+              resultater.push({ navn: billede.navn, success: true, mediaId: mfJson2.data.createMedia.id })
+              position++
+              continue
+            }
           }
 
-          resultater.push({ navn: billede.navn, success: false, error: `REST fejlede: ${restR.status} / ${restR2.status}` })
+          resultater.push({ navn: billede.navn, success: false, error: `Alle forsøg fejlede. Multipart1: ${mfText.slice(0,100)} | Multipart2: ${mfText2.slice(0,100)}` })
 
         } catch (e) {
           resultater.push({ navn: billede.navn, success: false, error: e.message })
