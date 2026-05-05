@@ -136,49 +136,58 @@ export default async function handler(req, res) {
 
       for (const billede of sorterede) {
         try {
-          // 1. Opret media placeholder i Mindworking
-          console.log('Opretter media for caseId:', caseId)
-          const createData = await gql(token, `
-            mutation uploadMedia($caseId: ID!) {
-              createMedia(input: { caseId: $caseId }) {
-                id
-                fileName
-                description
-              }
-            }
-          `, { caseId })
-
-          console.log('createMedia svar:', JSON.stringify(createData))
-          if (!createData.createMedia) {
-            resultater.push({ navn: billede.navn, success: false, error: 'createMedia returnerede null' })
-            continue
-          }
-          const mediaId = createData.createMedia.id
-
-          // 2. Hent filen fra Supabase og upload til Mindworking
-          console.log('Henter fil fra Supabase:', billede.url.slice(0, 80))
+          // Hent filen fra Supabase
+          console.log('Henter fil:', billede.navn)
           const fileResponse = await fetch(billede.url)
           if (!fileResponse.ok) {
-            console.error('Kunne ikke hente fil fra Supabase:', fileResponse.status)
-            resultater.push({ navn: billede.navn, success: false, error: 'Kunne ikke hente fil' })
+            resultater.push({ navn: billede.navn, success: false, error: 'Kunne ikke hente fil fra Supabase' })
             continue
           }
           const fileBlob = await fileResponse.blob()
-          console.log('Fil hentet, størrelse:', fileBlob.size, 'bytes')
+          console.log('Fil størrelse:', fileBlob.size, 'bytes')
+
+          // Send GraphQL mutation med fil som multipart (GraphQL multipart request spec)
+          const operations = JSON.stringify({
+            query: `mutation uploadMedia($caseId: ID!, $file: Upload!) {
+              createMedia(input: { caseId: $caseId, file: $file }) {
+                id
+                fileName
+              }
+            }`,
+            variables: { caseId, file: null }
+          })
+
+          const map = JSON.stringify({ "0": ["variables.file"] })
 
           const formData = new FormData()
-          formData.append('file', fileBlob, billede.navn)
+          formData.append('operations', operations)
+          formData.append('map', map)
+          formData.append('0', fileBlob, billede.navn)
 
-          const uploadUrl = `https://nybolig.mindworking.eu/api/integrations/media/upload/${mediaId}`
-          console.log('Uploader til:', uploadUrl)
-          const uploadR = await fetch(uploadUrl, {
+          console.log('Sender multipart til Mindworking')
+          const uploadR = await fetch(MW_ENDPOINT, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: formData
           })
+
           console.log('Upload status:', uploadR.status)
           const uploadText = await uploadR.text()
-          console.log('Upload svar:', uploadText.slice(0, 200))
+          console.log('Upload svar:', uploadText.slice(0, 300))
+
+          let uploadData
+          try { uploadData = JSON.parse(uploadText) } catch (e) {
+            resultater.push({ navn: billede.navn, success: false, error: 'Svar ikke JSON: ' + uploadText.slice(0, 100) })
+            continue
+          }
+
+          if (!uploadData.data?.createMedia?.id) {
+            resultater.push({ navn: billede.navn, success: false, error: 'createMedia fejlede: ' + uploadText.slice(0, 100) })
+            continue
+          }
+
+          const mediaId = uploadData.data.createMedia.id
+          console.log('Media oprettet med ID:', mediaId)
 
           // 3. Opdater med tag, position og beskrivelse
           await gql(token, `
