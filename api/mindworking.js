@@ -146,10 +146,38 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Fil størrelse:', fileBlob.size, 'bytes')
 
-          // Send mutation og fil separat
+          // Trin 1: Opret media placeholder via JSON GraphQL
+          const createData = await gql(token, `
+            mutation {
+              createMedia(input: { caseId: "${caseId}" }) {
+                id
+                fileName
+              }
+            }
+          `)
+
+          console.log('createMedia svar:', JSON.stringify(createData))
+          if (!createData?.createMedia?.id) {
+            resultater.push({ navn: billede.navn, success: false, error: 'createMedia fejlede' })
+            continue
+          }
+          const mediaId = createData.createMedia.id
+          console.log('Media ID:', mediaId)
+
+          // Trin 2: Upload fil via multipart til media endpoint
           const formData = new FormData()
-          formData.append('mutation', `mutation { createMedia(input: { caseId: "${caseId}" }) { id fileName } }`)
           formData.append('file', fileBlob, billede.navn)
+
+          const uploadUrl = `https://nybolig.mindworking.eu/api/integrations/media/${mediaId}/upload`
+          console.log('Uploader til:', uploadUrl)
+          const uploadR = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+          })
+          console.log('Upload status:', uploadR.status)
+          const uploadText = await uploadR.text()
+          console.log('Upload svar:', uploadText.slice(0, 300))
 
           console.log('Sender multipart til Mindworking')
           const uploadR = await fetch(MW_ENDPOINT, {
