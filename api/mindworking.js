@@ -67,7 +67,20 @@ export default async function handler(req, res) {
           viewer {
             caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) {
               id
+              caseNo
               liebhaveri
+              address
+              zipCode
+              city
+              price
+              rooms
+              size
+              ownerName
+              ownerEmail
+              ownerPhone
+              sellerName
+              sellerEmail
+              sellerPhone
               media {
                 items {
                   id
