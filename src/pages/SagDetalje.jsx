@@ -15,6 +15,8 @@ export default function SagDetalje() {
   const [kunder, setKunder] = useState([])
   const [noter, setNoter] = useState('')
   const [mwNummer, setMwNummer] = useState('')
+  const [mwData, setMwData] = useState(null)
+  const [mwLoading, setMwLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showBookModal, setShowBookModal] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -102,6 +104,28 @@ export default function SagDetalje() {
   }
   async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); toast('✓ Noter gemt') }
   async function saveMwNummer() { await supabase.from('sager').update({ mindworking_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, mindworking_sagsnummer: mwNummer })); toast('✓ Gemt') }
+
+  async function hentMwSag() {
+    if (!mwNummer) return
+    setMwLoading(true)
+    try {
+      const r = await fetch('/api/mindworking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_case', caseNo: mwNummer })
+      })
+      const result = await r.json()
+      if (result.success && result.case) {
+        setMwData(result.case)
+        toast('✓ Sagsdata hentet fra Mindworking!')
+      } else {
+        toast('Fejl: ' + (result.error || 'Sag ikke fundet'), 'error')
+      }
+    } catch (e) {
+      toast('Fejl: ' + e.message, 'error')
+    }
+    setMwLoading(false)
+  }
   async function updateStatus(status) { await supabase.from('sager').update({ status }).eq('id', id); setSag(s => ({ ...s, status })); toast('✓ Status opdateret') }
   async function sletSag() { if (!confirm('Slet sagen permanent?')) return; await supabase.from('sager').delete().eq('id', id); navigate('/sager') }
   async function bookFreelancer(fId) { await bookFreelancerOgSendMail(fId) }
@@ -216,6 +240,35 @@ export default function SagDetalje() {
                 <button className="btn btn-primary btn-sm" onClick={saveMwNummer}>Gem</button>
               </div>
             </div>
+            {mwNummer && (
+              <button className="btn btn-outline btn-sm" style={{ marginBottom: 10, width: '100%', justifyContent: 'center' }} onClick={hentMwSag} disabled={mwLoading}>
+                {mwLoading ? '⏳ Henter...' : '🔍 Hent sagsoplysninger fra Mindworking'}
+              </button>
+            )}
+            {mwData && (
+              <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 14, marginBottom: 10, fontSize: 13 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>Sagsdata fra Mindworking</div>
+                {mwData.address && (
+                  <div style={{ marginBottom: 6 }}>
+                    <span style={{ color: 'var(--muted)' }}>📍 Adresse: </span>
+                    <b>{[mwData.address.streetName, mwData.address.streetNumber, mwData.address.floor, mwData.address.door].filter(Boolean).join(' ')}, {mwData.address.zipCode} {mwData.address.city}</b>
+                  </div>
+                )}
+                {mwData.seller && (
+                  <>
+                    <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>👤 Sælger: </span><b>{mwData.seller.name || '—'}</b></div>
+                    {mwData.seller.email && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>✉ Email: </span><a href={`mailto:${mwData.seller.email}`} style={{ color: 'var(--pr)' }}>{mwData.seller.email}</a></div>}
+                    {mwData.seller.phone && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>📞 Telefon: </span>{mwData.seller.phone}</div>}
+                  </>
+                )}
+                {mwData.liebhaveri !== undefined && (
+                  <div style={{ marginTop: 6 }}><span style={{ color: 'var(--muted)' }}>⭐ Liebhaveri: </span>{mwData.liebhaveri ? 'Ja' : 'Nej'}</div>
+                )}
+                {mwData.media?.items?.length > 0 && (
+                  <div style={{ marginTop: 6 }}><span style={{ color: 'var(--muted)' }}>🖼 Billeder i Mindworking: </span><b>{mwData.media.items.length}</b></div>
+                )}
+              </div>
+            )}
             {mwNummer ? <div className="ok-box" style={{ marginBottom: 10 }}>✓ Sagsnummer gemt</div> : <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Indtast sagsnummer fra Mindworking</div>}
             <button className="btn btn-sm" style={{ background: mwNummer ? 'var(--pr)' : '#8fa8bc', color: '#fff', opacity: mwNummer ? 1 : 0.6, cursor: mwNummer ? 'pointer' : 'not-allowed' }} disabled={!mwNummer}>⚡ Send til Mindworking</button>
           </div>
