@@ -84,20 +84,20 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
-          // GraphQL multipart request spec – præcis som Mindworking forventer ifølge HAR fil
-          const operationsStr = JSON.stringify({
-            query: `mutation { createMedia(input: { 
-              caseId: "${caseId}", 
-              description: "",
+          // Matcher Mindworking HAR-format: felt hedder 'query' (ikke 'operations')
+          // og ingen variables – mutation inline uden file reference i query
+          const queryStr = JSON.stringify({
+            query: `mutation uploadCaseMedia { createMedia(input: {
+              caseId: "${caseId}",
+              description: "${billede.beskrivelse || ''}",
               mediaType: "image/jpg",
               published: true,
               tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
-            }) { id fileName published tags resourceUrl } }`,
-            variables: { input: { file: null } }
+            }) { id fileName published tags resourceUrl } }`
           })
 
           const mfData = new FormData()
-          mfData.append('operations', operationsStr)
+          mfData.append('query', queryStr)
           mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
