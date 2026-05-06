@@ -68,19 +68,6 @@ export default async function handler(req, res) {
             caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) {
               id
               liebhaveri
-              address {
-                streetName
-                streetNumber
-                floor
-                door
-                zipCode
-                city
-              }
-              seller {
-                name
-                email
-                phone
-              }
               media {
                 items {
                   id
