@@ -84,12 +84,24 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
-          // Multipart med query direkte + fil som separat felt
+          // GraphQL multipart request spec – præcis som Mindworking forventer ifølge HAR fil
+          const operationsStr = JSON.stringify({
+            query: `mutation { createMedia(input: { 
+              caseId: "${caseId}", 
+              description: "",
+              mediaType: "image/jpg",
+              published: true,
+              tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
+            }) { id fileName published tags resourceUrl } }`,
+            variables: { input: { file: null } }
+          })
+
           const mfData = new FormData()
-          mfData.append('query', `mutation { createMedia(input: { caseId: "${caseId}" }) { id fileName } }`)
+          mfData.append('operations', operationsStr)
+          mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
-          console.log('Prøver multipart query+fil')
+          console.log('Sender multipart til Mindworking')
           const mfR = await fetch(MW_ENDPOINT, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
@@ -99,43 +111,16 @@ export default async function handler(req, res) {
           const mfText = await mfR.text()
           console.log('Multipart svar:', mfText.slice(0, 300))
 
-          if (mfR.ok) {
-            let mfJson
-            try { mfJson = JSON.parse(mfText) } catch {}
-            if (mfJson?.data?.createMedia?.id) {
-              resultater.push({ navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id })
-              position++
-              continue
-            }
+          let mfJson
+          try { mfJson = JSON.parse(mfText) } catch {}
+
+          if (mfJson?.data?.createMedia?.id) {
+            resultater.push({ navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id })
+            position++
+            continue
           }
 
-          // Forsøg 2: query + variables + fil
-          const mfData2 = new FormData()
-          mfData2.append('query', `mutation uploadMedia($caseId: ID!) { createMedia(input: { caseId: $caseId }) { id fileName } }`)
-          mfData2.append('variables', JSON.stringify({ caseId }))
-          mfData2.append('file', fileBlob, billede.navn)
-
-          console.log('Prøver multipart query+variables+fil')
-          const mfR2 = await fetch(MW_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: mfData2
-          })
-          console.log('Multipart2 status:', mfR2.status)
-          const mfText2 = await mfR2.text()
-          console.log('Multipart2 svar:', mfText2.slice(0, 300))
-
-          if (mfR2.ok) {
-            let mfJson2
-            try { mfJson2 = JSON.parse(mfText2) } catch {}
-            if (mfJson2?.data?.createMedia?.id) {
-              resultater.push({ navn: billede.navn, success: true, mediaId: mfJson2.data.createMedia.id })
-              position++
-              continue
-            }
-          }
-
-          resultater.push({ navn: billede.navn, success: false, error: `Alle forsøg fejlede. Multipart1: ${mfText.slice(0,100)} | Multipart2: ${mfText2.slice(0,100)}` })
+          resultater.push({ navn: billede.navn, success: false, error: mfText.slice(0, 200) })
 
         } catch (e) {
           resultater.push({ navn: billede.navn, success: false, error: e.message })
