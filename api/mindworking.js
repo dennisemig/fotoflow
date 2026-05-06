@@ -70,17 +70,6 @@ export default async function handler(req, res) {
               caseNo
               liebhaveri
               address
-              zipCode
-              city
-              price
-              rooms
-              size
-              ownerName
-              ownerEmail
-              ownerPhone
-              sellerName
-              sellerEmail
-              sellerPhone
               media {
                 items {
                   id
