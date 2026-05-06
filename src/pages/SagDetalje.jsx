@@ -245,28 +245,23 @@ export default function SagDetalje() {
                 {mwLoading ? '⏳ Henter...' : '🔍 Hent sagsoplysninger fra Mindworking'}
               </button>
             )}
-            {mwData && (
+              {mwData && (
               <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 14, marginBottom: 10, fontSize: 13 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>Sagsdata fra Mindworking</div>
-                {mwData.address && (
-                  <div style={{ marginBottom: 6 }}>
-                    <span style={{ color: 'var(--muted)' }}>📍 Adresse: </span>
-                    <b>{mwData.address}</b>
+                {mwData.address && <div style={{ marginBottom: 4 }}>📍 <span style={{ color: 'var(--muted)' }}>Adresse:</span> <b>{mwData.address}{mwData.zipCode ? `, ${mwData.zipCode}` : ''}{mwData.city ? ` ${mwData.city}` : ''}</b></div>}
+                {mwData.price && <div style={{ marginBottom: 4 }}>💰 <span style={{ color: 'var(--muted)' }}>Pris:</span> <b>{Number(mwData.price).toLocaleString('da-DK')} kr</b></div>}
+                {mwData.rooms && <div style={{ marginBottom: 4 }}>🚪 <span style={{ color: 'var(--muted)' }}>Værelser:</span> <b>{mwData.rooms}</b></div>}
+                {mwData.size && <div style={{ marginBottom: 4 }}>📐 <span style={{ color: 'var(--muted)' }}>Størrelse:</span> <b>{mwData.size} m²</b></div>}
+                {(mwData.ownerName || mwData.sellerName) && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '.5px solid var(--brd)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6 }}>Sælger</div>
+                    {(mwData.ownerName || mwData.sellerName) && <div style={{ marginBottom: 4 }}>👤 <b>{mwData.ownerName || mwData.sellerName}</b></div>}
+                    {(mwData.ownerEmail || mwData.sellerEmail) && <div style={{ marginBottom: 4 }}>✉ <a href={`mailto:${mwData.ownerEmail || mwData.sellerEmail}`} style={{ color: 'var(--pr)' }}>{mwData.ownerEmail || mwData.sellerEmail}</a></div>}
+                    {(mwData.ownerPhone || mwData.sellerPhone) && <div style={{ marginBottom: 4 }}>📞 {mwData.ownerPhone || mwData.sellerPhone}</div>}
                   </div>
                 )}
-                {mwData.seller && (
-                  <>
-                    <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>👤 Sælger: </span><b>{mwData.seller.name || mwData.seller || '—'}</b></div>
-                    {mwData.seller.email && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>✉ Email: </span><a href={`mailto:${mwData.seller.email}`} style={{ color: 'var(--pr)' }}>{mwData.seller.email}</a></div>}
-                    {mwData.seller.phone && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>📞 Telefon: </span>{mwData.seller.phone}</div>}
-                  </>
-                )}
-                {mwData.liebhaveri !== undefined && (
-                  <div style={{ marginTop: 6 }}><span style={{ color: 'var(--muted)' }}>⭐ Liebhaveri: </span>{mwData.liebhaveri ? 'Ja' : 'Nej'}</div>
-                )}
-                {mwData.media?.items?.length > 0 && (
-                  <div style={{ marginTop: 6 }}><span style={{ color: 'var(--muted)' }}>🖼 Billeder i Mindworking: </span><b>{mwData.media.items.length}</b></div>
-                )}
+                {mwData.liebhaveri !== undefined && <div style={{ marginTop: 4 }}>⭐ <span style={{ color: 'var(--muted)' }}>Liebhaveri:</span> {mwData.liebhaveri ? 'Ja' : 'Nej'}</div>}
+                {mwData.media?.items?.length > 0 && <div style={{ marginTop: 4 }}>🖼 <span style={{ color: 'var(--muted)' }}>Billeder i Mindworking:</span> <b>{mwData.media.items.length}</b></div>}
               </div>
             )}
             {mwNummer ? <div className="ok-box" style={{ marginBottom: 10 }}>✓ Sagsnummer gemt</div> : <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Indtast sagsnummer fra Mindworking</div>}
