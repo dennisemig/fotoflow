@@ -251,12 +251,12 @@ export default function SagDetalje() {
                 {mwData.address && (
                   <div style={{ marginBottom: 6 }}>
                     <span style={{ color: 'var(--muted)' }}>📍 Adresse: </span>
-                    <b>{[mwData.address.streetName, mwData.address.streetNumber, mwData.address.floor, mwData.address.door].filter(Boolean).join(' ')}, {mwData.address.zipCode} {mwData.address.city}</b>
+                    <b>{mwData.address}</b>
                   </div>
                 )}
                 {mwData.seller && (
                   <>
-                    <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>👤 Sælger: </span><b>{mwData.seller.name || '—'}</b></div>
+                    <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>👤 Sælger: </span><b>{mwData.seller.name || mwData.seller || '—'}</b></div>
                     {mwData.seller.email && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>✉ Email: </span><a href={`mailto:${mwData.seller.email}`} style={{ color: 'var(--pr)' }}>{mwData.seller.email}</a></div>}
                     {mwData.seller.phone && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)' }}>📞 Telefon: </span>{mwData.seller.phone}</div>}
                   </>
