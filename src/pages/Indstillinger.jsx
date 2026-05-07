@@ -27,9 +27,12 @@ export default function Indstillinger() {
   const [savingPassword, setSavingPassword] = useState(false)
   const { toasts, toast } = useToast()
 
+  const [profileIndlæst, setProfileIndlæst] = useState(false)
+
   useEffect(() => {
-    if (profile) {
+    if (profile && !profileIndlæst) {
       setForm({ full_name: profile.full_name || '', telefon: profile.telefon || '', startadresse: profile.startadresse || '' })
+      setProfileIndlæst(true)
     }
     fetchArbejdstider()
   }, [profile])
