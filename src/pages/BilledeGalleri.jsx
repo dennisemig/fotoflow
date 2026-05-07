@@ -56,8 +56,9 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
     for (const file of Array.from(files)) {
       setFileProgress(p => ({ ...p, [file.name]: 1 }))
       try {
-        const cleanName = file.name.replace(/[^a-zA-Z0-9æøåÆØÅ._-]/g, '_')
-        const filePath = `${sagId}/${sagNavn}/${Date.now()}_${cleanName}`
+        const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const sagNavn2 = sagAdresse?.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').trim() || sagId
+        const filePath = `${sagId}/${sagNavn2}/${Date.now()}_${cleanName}`
         const { error } = await supabase.storage.from('sager').upload(filePath, file, { upsert: true })
         if (error) throw new Error(error.message)
         await supabase.from('uploads').insert([{
