@@ -67,7 +67,8 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
         }])
         setFileProgress(p => ({ ...p, [file.name]: 100 }))
       } catch (e) {
-        toast?.(`Fejl: ${file.name}`, 'error')
+        console.error('Upload fejl:', e.message)
+        toast?.(`Fejl: ${file.name} – ${e.message}`, 'error')
         setFileProgress(p => ({ ...p, [file.name]: -1 }))
       }
     }
