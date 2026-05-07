@@ -28,11 +28,17 @@ export default function Indstillinger() {
   const { toasts, toast } = useToast()
 
   useEffect(() => {
-    if (profile) {
-      setForm({ full_name: profile.full_name || '', telefon: profile.telefon || '', startadresse: profile.startadresse || '' })
-    }
+    fetchProfil()
     fetchArbejdstider()
-  }, [profile?.id])
+  }, [])
+
+  async function fetchProfil() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      if (data) setForm({ full_name: data.full_name || '', telefon: data.telefon || '', startadresse: data.startadresse || '' })
+    }
+  }
 
   async function fetchArbejdstider() {
     const { data } = await supabase.from('indstillinger').select('vaerdi').eq('noegle', 'arbejdstider').single()
