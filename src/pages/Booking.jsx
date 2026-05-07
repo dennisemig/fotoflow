@@ -99,6 +99,9 @@ export default function Booking() {
     const ugedag = new Date(dayStr + 'T12:00:00').getDay()
     const slots = getSlotsForDay(ugedag)
     if (slots.length === 0) return 'lukket'
+    // Tjek om der er en heldags-blokering (00:00-23:59)
+    const heldag = sagsForDay.some(s => s.tidspunkt === '00:00' && s.tidspunkt_slut === '23:59')
+    if (heldag) return 'optaget'
     const ledigeSlots = slots.filter(s => slotErLedigt(s, sagsForDay))
     if (ledigeSlots.length === 0) return 'optaget'
     if (sagsForDay.length > 0) return 'delvis'
