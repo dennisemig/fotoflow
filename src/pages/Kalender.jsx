@@ -14,7 +14,17 @@ export default function Kalender() {
   const navigate = useNavigate()
   const { toasts, toast } = useToast()
 
-  useEffect(() => { fetchSager() }, [year, month])
+  useEffect(() => { fetchSager(); fetchBlokeringer() }, [year, month])
+  const [blokeringer, setBlokeringer] = useState([])
+  const [showBlokerModal, setShowBlokerModal] = useState(false)
+  const [blokerDato, setBlokerDato] = useState(null)
+
+  async function fetchBlokeringer() {
+    const from = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    const to = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`
+    const { data } = await supabase.from('kalender_blokeringer').select('*').gte('dato', from).lte('dato', to)
+    setBlokeringer(data || [])
+  }
 
   async function fetchSager() {
     const from = `${year}-${String(month + 1).padStart(2, '0')}-01`
@@ -25,6 +35,7 @@ export default function Kalender() {
       .gte('dato', from)
       .lte('dato', to)
       .order('dato')
+      .order('tidspunkt', { ascending: true, nullsFirst: false })
     if (error) console.error('Kalender fejl:', error)
     setSager(data || [])
   }
@@ -40,6 +51,11 @@ export default function Kalender() {
   const sagsForDay = (day) => {
     const d = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     return sager.filter(s => s.dato === d)
+  }
+
+  const blokeringerForDay = (day) => {
+    const d = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    return blokeringer.filter(b => b.dato === d)
   }
 
   const todayDay = new Date().getDate()
@@ -76,6 +92,7 @@ export default function Kalender() {
             return (
               <div key={day}
                 onClick={() => { setSelectedDate(dayStr); setShowModal(true) }}
+                onContextMenu={e => { e.preventDefault(); setBlokerDato(dayStr); setShowBlokerModal(true) }}
                 style={{ minHeight: 72, background: isToday ? '#eef4f8' : isWeekend ? '#fafafa' : 'transparent', borderRadius: 8, padding: '5px 6px', border: isToday ? '2px solid var(--pr)' : '.5px solid var(--brd)', cursor: 'pointer' }}
                 onMouseEnter={e => { if (!isToday) e.currentTarget.style.background = '#f5f7f9' }}
                 onMouseLeave={e => { if (!isToday) e.currentTarget.style.background = isWeekend ? '#fafafa' : 'transparent' }}>
@@ -88,7 +105,13 @@ export default function Kalender() {
                     {s.tidspunkt ? String(s.tidspunkt).slice(0, 5) : ''}{s.tidspunkt_slut ? `–${String(s.tidspunkt_slut).slice(0, 5)}` : ''}{' '}{s.adresse ? s.adresse.split(',')[0] : ''}
                   </div>
                 ))}
-                {daySager.length === 0 && <div style={{ fontSize: 9, color: '#ddd', marginTop: 2 }}>+ Tilføj</div>}
+                {blokeringerForDay(day).map(b => (
+                  <div key={b.id} style={{ fontSize: 9, fontWeight: 600, padding: '2px 5px', borderRadius: 4, marginBottom: 2, background: '#e53e3e', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={b.beskrivelse || 'Blokeret'}>
+                    🚫 {b.tidspunkt ? String(b.tidspunkt).slice(0,5) : ''}{b.tidspunkt_slut ? `–${String(b.tidspunkt_slut).slice(0,5)}` : ''}{!b.tidspunkt ? 'Hele dagen' : ''} {b.beskrivelse || ''}
+                  </div>
+                ))}
+                {daySager.length === 0 && blokeringerForDay(day).length === 0 && <div style={{ fontSize: 9, color: '#ddd', marginTop: 2 }}>+ Tilføj</div>}
               </div>
             )
           })}
@@ -106,7 +129,8 @@ export default function Kalender() {
               <span style={{ color: 'var(--muted)' }}>{l.label}</span>
             </div>
           ))}
-          <button className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { setSelectedDate(todayStr); setShowModal(true) }}>+ Opret sag</button>
+          <button className="btn btn-outline btn-sm" onClick={() => { setBlokerDato(todayStr); setShowBlokerModal(true) }}>🚫 Bloker tid</button>
+          <button className="btn btn-primary btn-sm" onClick={() => { setSelectedDate(todayStr); setShowModal(true) }}>+ Opret sag</button>
         </div>
       </div>
 
@@ -136,6 +160,15 @@ export default function Kalender() {
           ))
         }
       </div>
+
+      {showBlokerModal && (
+        <BlokerModal
+          dato={blokerDato}
+          onClose={() => setShowBlokerModal(false)}
+          onSaved={() => { setShowBlokerModal(false); fetchBlokeringer(); toast('✓ Tid blokeret!') }}
+          toast={toast}
+        />
+      )}
 
       {showModal && (
         <OpretSagModal
@@ -220,6 +253,59 @@ function OpretSagModal({ dato, onClose, onSaved, toast }) {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>Annuller</button>
           <button className="btn btn-green btn-sm" onClick={handleSave} disabled={saving}>{saving ? 'Opretter...' : 'Opret sag'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BlokerModal({ dato, onClose, onSaved, toast }) {
+  const [form, setForm] = useState({ beskrivelse: '', tidspunkt: '', tidspunkt_slut: '', heldag: true })
+  const [saving, setSaving] = useState(false)
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const datoLabel = dato ? new Date(dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''
+
+  async function handleSave() {
+    setSaving(true)
+    const { error } = await supabase.from('kalender_blokeringer').insert([{
+      dato,
+      beskrivelse: form.beskrivelse || null,
+      tidspunkt: form.heldag ? null : (form.tidspunkt || null),
+      tidspunkt_slut: form.heldag ? null : (form.tidspunkt_slut || null),
+    }])
+    if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-title">
+          🚫 Bloker tid
+          {datoLabel && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--muted)', marginLeft: 8 }}>– {datoLabel}</span>}
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="form-group">
+          <label>Beskrivelse (valgfrit)</label>
+          <input value={form.beskrivelse} onChange={e => set('beskrivelse', e.target.value)} placeholder="Ferie, møde, fri..." autoFocus />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.heldag} onChange={e => set('heldag', e.target.checked)} />
+            Hele dagen
+          </label>
+        </div>
+        {!form.heldag && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group"><label>Fra</label><input type="time" value={form.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+            <div className="form-group"><label>Til</label><input type="time" value={form.tidspunkt_slut} onChange={e => set('tidspunkt_slut', e.target.value)} /></div>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn btn-outline btn-sm" onClick={onClose}>Annuller</button>
+          <button className="btn btn-sm" style={{ background: '#e53e3e', color: '#fff' }} onClick={handleSave} disabled={saving}>{saving ? 'Gemmer...' : '🚫 Bloker'}</button>
         </div>
       </div>
     </div>

@@ -29,12 +29,20 @@ export default function Booking() {
 
   async function fetchOptagedeDatoer() {
     const today = new Date().toISOString().split('T')[0]
-    const { data } = await supabase
-      .from('sager')
-      .select('dato, tidspunkt, tidspunkt_slut')
-      .gte('dato', today)
-      .not('status', 'eq', 'afsluttet')
-    setOptagedeDatoer(data || [])
+    const [sagerRes, blokeringRes] = await Promise.all([
+      supabase.from('sager').select('dato, tidspunkt, tidspunkt_slut').gte('dato', today).not('status', 'eq', 'afsluttet'),
+      supabase.from('kalender_blokeringer').select('dato, tidspunkt, tidspunkt_slut').gte('dato', today)
+    ])
+    // Kombiner sager og blokeringer – blokeringer uden tidspunkt blokerer hele dagen
+    const alleOptagede = [
+      ...(sagerRes.data || []),
+      ...(blokeringRes.data || []).map(b => ({
+        dato: b.dato,
+        tidspunkt: b.tidspunkt || '00:00',
+        tidspunkt_slut: b.tidspunkt_slut || '23:59'
+      }))
+    ]
+    setOptagedeDatoer(alleOptagede)
   }
 
   const [arbejdstider, setArbejdstider] = useState(null)
