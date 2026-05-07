@@ -17,7 +17,7 @@ const DEFAULT_ARBEJDSTIDER = {
 }
 
 export default function Indstillinger() {
-  const { profile } = useAuth()
+  const { profile, refreshProfile } = useAuth()
   const [form, setForm] = useState({ full_name: '', telefon: '', startadresse: '' })
   const [arbejdstider, setArbejdstider] = useState(DEFAULT_ARBEJDSTIDER)
   const [saving, setSaving] = useState(false)
@@ -44,6 +44,7 @@ export default function Indstillinger() {
     await supabase.from('profiles').update({
       full_name: form.full_name, telefon: form.telefon, startadresse: form.startadresse
     }).eq('id', profile?.id)
+    await refreshProfile()
     setSaving(false)
     toast('✓ Profil gemt')
   }
