@@ -113,18 +113,23 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
-          // HAR fil viser feltet hedder 'query' ikke 'operations'
-          const mutationQuery = `mutation { createMedia(input: { 
-              caseId: "${caseId}", 
-              description: "",
-              mediaType: "image/jpg",
-              published: true,
-              tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
-            }) { id fileName published tags resourceUrl } }`
+          // Præcis format fra Mindworkings HAR fil
+          const operations = JSON.stringify({
+            query: `mutation createMedia($input: CreateMediaInput!) { createMedia(input: $input) { id fileName published tags resourceUrl } }`,
+            variables: {
+              input: {
+                caseId: caseId,
+                description: "",
+                mediaType: "image/jpg",
+                published: true,
+                tags: billede.tag ? [billede.tag] : [],
+                file: null
+              }
+            }
+          })
 
           const mfData = new FormData()
-          mfData.append('query', mutationQuery)
-          mfData.append('variables', JSON.stringify({ input: { file: null } }))
+          mfData.append('operations', operations)
           mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
