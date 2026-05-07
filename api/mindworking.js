@@ -59,35 +59,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, shopId: data.viewer.shopByShopNo.id })
     }
 
-    if (action === 'get_case') {
-      if (!caseNo) return res.status(400).json({ error: 'Mangler caseNo' })
-      console.log('Henter sag:', caseNo)
-      const data = await gql(token, `
-        query GetCase($shopNo: String!, $caseNo: String!) {
-          viewer {
-            caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) {
-              id
-              caseNo
-              liebhaveri
-              address
-              media {
-                items {
-                  id
-                  fileName
-                  resourceUrl
-                  published
-                  description
-                  mediaType
-                  tags
-                }
-              }
-            }
-          }
-        }
-      `, { shopNo: 'N260142', caseNo })
-      return res.status(200).json({ success: true, case: data.viewer.caseByCaseNo })
-    }
-
     if (action === 'upload_billeder') {
       if (!caseNo || !billeder?.length) return res.status(400).json({ error: 'Mangler caseNo eller billeder' })
 
@@ -113,23 +84,20 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
-          // Præcis format fra Mindworkings HAR fil
-          const operations = JSON.stringify({
-            query: `mutation createMedia($input: CreateMediaInput!) { createMedia(input: $input) { id fileName published tags resourceUrl } }`,
-            variables: {
-              input: {
-                caseId: caseId,
-                description: "",
-                mediaType: "image/jpg",
-                published: true,
-                tags: billede.tag ? [billede.tag] : [],
-                file: null
-              }
-            }
+          // Matcher Mindworking HAR-format: felt hedder 'query' (ikke 'operations')
+          // og ingen variables – mutation inline uden file reference i query
+          const queryStr = JSON.stringify({
+            query: `mutation uploadCaseMedia { createMedia(input: {
+              caseId: "${caseId}",
+              description: "${billede.beskrivelse || ''}",
+              mediaType: "image/jpg",
+              published: true,
+              tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
+            }) { id fileName published tags resourceUrl } }`
           })
 
           const mfData = new FormData()
-          mfData.append('operations', operations)
+          mfData.append('query', queryStr)
           mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
