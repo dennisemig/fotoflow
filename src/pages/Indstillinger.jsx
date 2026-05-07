@@ -18,6 +18,7 @@ const DEFAULT_ARBEJDSTIDER = {
 
 export default function Indstillinger() {
   const { profile, refreshProfile } = useAuth()
+  const [userId, setUserId] = useState(null)
   const [form, setForm] = useState({ full_name: '', telefon: '', startadresse: '' })
   const [arbejdstider, setArbejdstider] = useState(DEFAULT_ARBEJDSTIDER)
   const [saving, setSaving] = useState(false)
@@ -35,6 +36,7 @@ export default function Indstillinger() {
   async function fetchProfil() {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
+      setUserId(user.id)
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (data) setForm({ full_name: data.full_name || '', telefon: data.telefon || '', startadresse: data.startadresse || '' })
     }
@@ -46,10 +48,12 @@ export default function Indstillinger() {
   }
 
   async function saveProfil() {
+    if (!userId) { toast('Ikke logget ind', 'error'); return }
     setSaving(true)
-    await supabase.from('profiles').update({
+    const { error } = await supabase.from('profiles').update({
       full_name: form.full_name, telefon: form.telefon, startadresse: form.startadresse
-    }).eq('id', profile?.id)
+    }).eq('id', userId)
+    if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
     setSaving(false)
     toast('✓ Profil gemt')
   }
