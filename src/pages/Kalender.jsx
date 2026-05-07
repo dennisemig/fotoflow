@@ -260,25 +260,39 @@ function OpretSagModal({ dato, onClose, onSaved, toast }) {
 }
 
 function BlokerModal({ dato, onClose, onSaved, toast }) {
-  const [form, setForm] = useState({ dato: dato || '', beskrivelse: '', tidspunkt: '', tidspunkt_slut: '', heldag: true })
+  const [form, setForm] = useState({ dato_fra: dato || '', dato_til: dato || '', beskrivelse: '', tidspunkt: '', tidspunkt_slut: '', heldag: true })
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const datoLabel = form.dato ? new Date(form.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''
-
   async function handleSave() {
-    if (!form.dato) { toast('Vælg en dato', 'error'); return }
+    if (!form.dato_fra) { toast('Vælg en startdato', 'error'); return }
     setSaving(true)
-    const { error } = await supabase.from('kalender_blokeringer').insert([{
-      dato: form.dato,
+
+    // Generer alle datoer mellem fra og til
+    const datoer = []
+    const current = new Date(form.dato_fra + 'T12:00:00')
+    const slut = new Date((form.dato_til || form.dato_fra) + 'T12:00:00')
+    while (current <= slut) {
+      datoer.push(current.toISOString().split('T')[0])
+      current.setDate(current.getDate() + 1)
+    }
+
+    const rows = datoer.map(d => ({
+      dato: d,
       beskrivelse: form.beskrivelse || null,
       tidspunkt: form.heldag ? null : (form.tidspunkt || null),
       tidspunkt_slut: form.heldag ? null : (form.tidspunkt_slut || null),
-    }])
+    }))
+
+    const { error } = await supabase.from('kalender_blokeringer').insert(rows)
     if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
     setSaving(false)
     onSaved()
   }
+
+  const antalDage = form.dato_fra && form.dato_til
+    ? Math.round((new Date(form.dato_til + 'T12:00:00') - new Date(form.dato_fra + 'T12:00:00')) / (1000 * 60 * 60 * 24)) + 1
+    : 1
 
   return (
     <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -287,11 +301,19 @@ function BlokerModal({ dato, onClose, onSaved, toast }) {
           🚫 Bloker tid
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
-        <div className="form-group">
-          <label>Dato *</label>
-          <input type="date" value={form.dato} onChange={e => set('dato', e.target.value)} min={new Date().toISOString().split('T')[0]} />
-          {datoLabel && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{datoLabel}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-group">
+            <label>Fra dato *</label>
+            <input type="date" value={form.dato_fra} onChange={e => set('dato_fra', e.target.value)} min={new Date().toISOString().split('T')[0]} />
+          </div>
+          <div className="form-group">
+            <label>Til dato</label>
+            <input type="date" value={form.dato_til} onChange={e => set('dato_til', e.target.value)} min={form.dato_fra || new Date().toISOString().split('T')[0]} />
+          </div>
         </div>
+        {antalDage > 1 && (
+          <div style={{ fontSize: 12, color: 'var(--pr)', fontWeight: 600, marginBottom: 10 }}>📅 {antalDage} dage blokeres</div>
+        )}
         <div className="form-group">
           <label>Beskrivelse (valgfrit)</label>
           <input value={form.beskrivelse} onChange={e => set('beskrivelse', e.target.value)} placeholder="Ferie, møde, fri..." />
@@ -304,13 +326,15 @@ function BlokerModal({ dato, onClose, onSaved, toast }) {
         </div>
         {!form.heldag && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div className="form-group"><label>Fra</label><input type="time" value={form.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
-            <div className="form-group"><label>Til</label><input type="time" value={form.tidspunkt_slut} onChange={e => set('tidspunkt_slut', e.target.value)} /></div>
+            <div className="form-group"><label>Fra kl.</label><input type="time" value={form.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+            <div className="form-group"><label>Til kl.</label><input type="time" value={form.tidspunkt_slut} onChange={e => set('tidspunkt_slut', e.target.value)} /></div>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>Annuller</button>
-          <button className="btn btn-sm" style={{ background: '#e53e3e', color: '#fff' }} onClick={handleSave} disabled={saving}>{saving ? 'Gemmer...' : '🚫 Bloker'}</button>
+          <button className="btn btn-sm" style={{ background: '#e53e3e', color: '#fff' }} onClick={handleSave} disabled={saving}>
+            {saving ? 'Gemmer...' : `🚫 Bloker ${antalDage > 1 ? antalDage + ' dage' : 'dag'}`}
+          </button>
         </div>
       </div>
     </div>
