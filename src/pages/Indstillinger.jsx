@@ -27,15 +27,12 @@ export default function Indstillinger() {
   const [savingPassword, setSavingPassword] = useState(false)
   const { toasts, toast } = useToast()
 
-  const [profileIndlæst, setProfileIndlæst] = useState(false)
-
   useEffect(() => {
-    if (profile && !profileIndlæst) {
+    if (profile) {
       setForm({ full_name: profile.full_name || '', telefon: profile.telefon || '', startadresse: profile.startadresse || '' })
-      setProfileIndlæst(true)
     }
     fetchArbejdstider()
-  }, [profile])
+  }, [profile?.id])
 
   async function fetchArbejdstider() {
     const { data } = await supabase.from('indstillinger').select('vaerdi').eq('noegle', 'arbejdstider').single()
@@ -47,7 +44,6 @@ export default function Indstillinger() {
     await supabase.from('profiles').update({
       full_name: form.full_name, telefon: form.telefon, startadresse: form.startadresse
     }).eq('id', profile?.id)
-    await refreshProfile()
     setSaving(false)
     toast('✓ Profil gemt')
   }
