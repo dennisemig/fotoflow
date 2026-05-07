@@ -44,9 +44,6 @@ export default function Indstillinger() {
     await supabase.from('profiles').update({
       full_name: form.full_name, telefon: form.telefon, startadresse: form.startadresse
     }).eq('id', profile?.id)
-    // Genindlæs fra databasen så formen ikke nulstilles
-    const { data } = await supabase.from('profiles').select('*').eq('id', profile?.id).single()
-    if (data) setForm({ full_name: data.full_name || '', telefon: data.telefon || '', startadresse: data.startadresse || '' })
     setSaving(false)
     toast('✓ Profil gemt')
   }
@@ -200,7 +197,14 @@ export default function Indstillinger() {
         {/* EMAIL */}
         <div className="card">
           <div className="section-hd">Email (Resend)</div>
-          <div className="ok-box">✓ Resend er konfigureret – mails sendes fra dennis@vaniagraphics.dk</div>
+          <div className="ok-box" style={{ marginBottom: 12 }}>✓ Resend er konfigureret – mails sendes fra dennis@vaniagraphics.dk</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>Daglig mail med næste dags opgaver sendes automatisk kl. 19:00.</div>
+          <button className="btn btn-outline btn-sm" onClick={async () => {
+            const r = await fetch('/api/daglig-mail', { method: 'GET', headers: { Authorization: 'Bearer VaniaGraphics2026!' } })
+            const d = await r.json()
+            if (d.success) toast(d.message || `✓ Testmail sendt – ${d.sager} opgave(r) i morgen!`)
+            else toast('Fejl: ' + d.error, 'error')
+          }}>📧 Send testmail nu</button>
         </div>
 
         {/* MINDWORKING */}
