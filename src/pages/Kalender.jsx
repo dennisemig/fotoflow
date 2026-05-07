@@ -260,16 +260,17 @@ function OpretSagModal({ dato, onClose, onSaved, toast }) {
 }
 
 function BlokerModal({ dato, onClose, onSaved, toast }) {
-  const [form, setForm] = useState({ beskrivelse: '', tidspunkt: '', tidspunkt_slut: '', heldag: true })
+  const [form, setForm] = useState({ dato: dato || '', beskrivelse: '', tidspunkt: '', tidspunkt_slut: '', heldag: true })
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const datoLabel = dato ? new Date(dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''
+  const datoLabel = form.dato ? new Date(form.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''
 
   async function handleSave() {
+    if (!form.dato) { toast('Vælg en dato', 'error'); return }
     setSaving(true)
     const { error } = await supabase.from('kalender_blokeringer').insert([{
-      dato,
+      dato: form.dato,
       beskrivelse: form.beskrivelse || null,
       tidspunkt: form.heldag ? null : (form.tidspunkt || null),
       tidspunkt_slut: form.heldag ? null : (form.tidspunkt_slut || null),
@@ -284,12 +285,16 @@ function BlokerModal({ dato, onClose, onSaved, toast }) {
       <div className="modal">
         <div className="modal-title">
           🚫 Bloker tid
-          {datoLabel && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--muted)', marginLeft: 8 }}>– {datoLabel}</span>}
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="form-group">
+          <label>Dato *</label>
+          <input type="date" value={form.dato} onChange={e => set('dato', e.target.value)} min={new Date().toISOString().split('T')[0]} />
+          {datoLabel && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{datoLabel}</div>}
+        </div>
+        <div className="form-group">
           <label>Beskrivelse (valgfrit)</label>
-          <input value={form.beskrivelse} onChange={e => set('beskrivelse', e.target.value)} placeholder="Ferie, møde, fri..." autoFocus />
+          <input value={form.beskrivelse} onChange={e => set('beskrivelse', e.target.value)} placeholder="Ferie, møde, fri..." />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
