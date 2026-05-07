@@ -1,11 +1,11 @@
 {
-  "functions": {
-    "api/dropbox-upload.js": {
-      "maxDuration": 300
-    }
-  },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/daglig-mail",
+      "schedule": "0 17 * * *"
+    }
   ]
 }
