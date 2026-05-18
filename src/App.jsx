@@ -16,6 +16,8 @@ import Bookinger from './pages/Bookinger'
 import Indstillinger from './pages/Indstillinger'
 import Booking from './pages/Booking'
 import Levering from './pages/Levering'
+import AuthCallback from './pages/AuthCallback'
+import SetPassword from './pages/SetPassword'
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
@@ -33,6 +35,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/set-password" element={<SetPassword />} />
       <Route path="/book/:slug" element={<Booking />} />
       <Route path="/levering/:token" element={<Levering />} />
       <Route path="/" element={<Protected><Layout /></Protected>}>
