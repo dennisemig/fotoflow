@@ -1,10 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-)
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -12,27 +5,49 @@ export default async function handler(req, res) {
   if (!email || !navn) return res.status(400).json({ error: 'Mangler email eller navn' })
 
   try {
-    // Inviter brugeren via Supabase Auth – sender automatisk en email med link
-    const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.VITE_APP_URL}/auth/callback`,
-      data: {
-        full_name: navn,
-        role: 'freelancer',
-        freelancer_id
-      }
+    const SUPABASE_URL = process.env.VITE_SUPABASE_URL
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
+
+    // Kald Supabase Admin API direkte via fetch
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SERVICE_KEY,
+        'Authorization': `Bearer ${SERVICE_KEY}`
+      },
+      body: JSON.stringify({
+        email,
+        email_confirm: true,
+        invite: true,
+        user_metadata: { full_name: navn, role: 'freelancer', freelancer_id },
+        redirect_to: `${process.env.VITE_APP_URL}/auth/callback`
+      })
     })
 
-    if (error) throw new Error(error.message)
+    const data = await r.json()
+    console.log('Invite svar:', JSON.stringify(data))
 
-    // Opret profil for freelanceren
-    await supabaseAdmin.from('profiles').upsert({
-      id: data.user.id,
-      email,
-      full_name: navn,
-      role: 'freelancer',
-    }, { onConflict: 'id' })
+    if (!r.ok) throw new Error(data.message || data.error || 'Invitation fejlede')
 
-    return res.status(200).json({ success: true, userId: data.user.id })
+    // Opret profil
+    await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SERVICE_KEY,
+        'Authorization': `Bearer ${SERVICE_KEY}`,
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({
+        id: data.id,
+        email,
+        full_name: navn,
+        role: 'freelancer'
+      })
+    })
+
+    return res.status(200).json({ success: true, userId: data.id })
   } catch (e) {
     console.error('Invite fejl:', e)
     return res.status(500).json({ error: e.message })
