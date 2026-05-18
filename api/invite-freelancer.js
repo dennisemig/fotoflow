@@ -4,9 +4,15 @@ export default async function handler(req, res) {
   const { email, navn, freelancer_id } = req.body
   if (!email || !navn) return res.status(400).json({ error: 'Mangler email eller navn' })
 
+  const SUPABASE_URL = process.env.VITE_SUPABASE_URL
+  const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
+
+  console.log('Invite start – email:', email, 'URL:', SUPABASE_URL?.slice(0, 30))
+  console.log('Service key tilgængelig:', !!SERVICE_KEY)
+
+  if (!SERVICE_KEY) return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY mangler i Vercel' })
+
   try {
-    const SUPABASE_URL = process.env.VITE_SUPABASE_URL
-    const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 
     // Kald Supabase Admin API direkte via fetch
     const r = await fetch(`${SUPABASE_URL}/auth/v1/invite`, {
