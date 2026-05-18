@@ -15,9 +15,14 @@ export default function Login() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Tjek om URL indeholder et invitation/recovery token
+    // Tjek både hash og query params for invitation/recovery token
     const hash = window.location.hash
-    if (hash && (hash.includes('type=invite') || hash.includes('type=recovery'))) {
+    const params = new URLSearchParams(window.location.search)
+    const type = params.get('type') || ''
+    
+    if (hash.includes('type=invite') || hash.includes('type=recovery') || 
+        type === 'invite' || type === 'recovery' ||
+        hash.includes('access_token')) {
       setMode('set-password')
     }
   }, [])
