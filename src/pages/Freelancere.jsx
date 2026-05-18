@@ -113,11 +113,16 @@ function TilfoejFreelancerModal({ onClose, onSaved, toast }) {
       return
     }
 
-    await fetch('/api/send-notification', {
+    // Send invitation via Supabase Auth – giver adgang til systemet med korrekt token
+    const inviteRes = await fetch('/api/invite-freelancer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'freelancer_invitation', mægler: { email: form.email, navn: form.navn } })
-    }).catch(() => { })
+      body: JSON.stringify({ email: form.email, navn: form.navn, freelancer_id: fl?.id })
+    })
+    const inviteData = await inviteRes.json()
+    if (!inviteData.success) {
+      toast('Freelancer oprettet men invitation fejlede: ' + inviteData.error, 'error')
+    }
 
     setSaving(false)
     onSaved()
