@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   try {
     // Inviter brugeren via Supabase Auth – sender automatisk en email med link
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.VITE_APP_URL}/freelancer`,
+      redirectTo: `${process.env.VITE_APP_URL}/auth/callback`,
       data: {
         full_name: navn,
         role: 'freelancer',
