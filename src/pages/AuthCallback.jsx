@@ -6,13 +6,41 @@ export default function AuthCallback() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Supabase håndterer automatisk token fra URL hash
-    supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        // Tjek om det er en ny invitation (ingen password sat endnu)
-        navigate('/set-password')
+    async function handleCallback() {
+      // Vent på at Supabase behandler token fra URL
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session?.user) {
+        // Hent profil for at tjekke rolle
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+
+        const role = profile?.role || session.user.user_metadata?.role
+
+        if (role === 'freelancer') {
+          navigate('/set-password')
+        } else {
+          navigate('/')
+        }
+      } else {
+        // Token ikke klar endnu – vent lidt og prøv igen
+        setTimeout(async () => {
+          const { data: { session: s2 } } = await supabase.auth.getSession()
+          if (s2?.user) {
+            const { data: p } = await supabase.from('profiles').select('role').eq('id', s2.user.id).single()
+            const role = p?.role || s2.user.user_metadata?.role
+            navigate(role === 'freelancer' ? '/set-password' : '/')
+          } else {
+            navigate('/login')
+          }
+        }, 1500)
       }
-    })
+    }
+
+    handleCallback()
   }, [])
 
   return (
