@@ -36,16 +36,9 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
 
   async function loadThumbnail(upload) {
     try {
-      const { data } = await supabase.storage.from('sager').createSignedUrl(upload.dropbox_path, 3600, {
-        transform: { width: 400, height: 400, resize: 'cover' }
-      })
+      const { data } = await supabase.storage.from('sager').createSignedUrl(upload.dropbox_path, 3600)
       if (data?.signedUrl) setThumbnails(t => ({ ...t, [upload.id]: data.signedUrl }))
-    } catch {
-      try {
-        const { data } = await supabase.storage.from('sager').createSignedUrl(upload.dropbox_path, 3600)
-        if (data?.signedUrl) setThumbnails(t => ({ ...t, [upload.id]: data.signedUrl }))
-      } catch {}
-    }
+    } catch {}
   }
 
   async function uploadFiles(files) {
