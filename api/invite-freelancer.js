@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 
     // Kald Supabase Admin API direkte via fetch
-    const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/invite`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -18,9 +18,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         email,
-        email_confirm: true,
-        invite: true,
-        user_metadata: { full_name: navn, role: 'freelancer', freelancer_id },
+        data: { full_name: navn, role: 'freelancer', freelancer_id },
         redirect_to: `${process.env.VITE_APP_URL}/auth/callback`
       })
     })
