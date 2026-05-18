@@ -92,7 +92,7 @@ function TilfoejFreelancerModal({ onClose, onSaved, toast }) {
 
     const specialerArr = form.specialer ? form.specialer.split(',').map(s => s.trim()).filter(Boolean) : []
 
-    const { error } = await supabase.from('freelancere').insert([{
+    const { data: fl, error } = await supabase.from('freelancere').insert([{
       navn: form.navn,
       email: form.email,
       telefon: form.telefon || null,
@@ -104,7 +104,7 @@ function TilfoejFreelancerModal({ onClose, onSaved, toast }) {
       kan_redigere_sager: perms.kan_redigere_sager,
       kan_se_crm: perms.kan_se_crm,
       invited_at: new Date().toISOString()
-    }])
+    }]).select().single()
 
     if (error) {
       console.error('Fejl:', error)
@@ -113,15 +113,25 @@ function TilfoejFreelancerModal({ onClose, onSaved, toast }) {
       return
     }
 
-    // Send invitation via Supabase Auth – giver adgang til systemet med korrekt token
-    const inviteRes = await fetch('/api/invite-freelancer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: form.email, navn: form.navn, freelancer_id: fl?.id })
-    })
-    const inviteData = await inviteRes.json()
-    if (!inviteData.success) {
-      toast('Freelancer oprettet men invitation fejlede: ' + inviteData.error, 'error')
+    // Send invitation via Supabase Auth med timeout
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 8000)
+      const inviteRes = await fetch('/api/invite-freelancer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email, navn: form.navn, freelancer_id: fl?.id }),
+        signal: controller.signal
+      })
+      clearTimeout(timeout)
+      const inviteData = await inviteRes.json()
+      if (!inviteData.success) {
+        toast('Freelancer oprettet – invitation fejlede: ' + inviteData.error, 'error')
+      } else {
+        toast('✓ Freelancer tilføjet og invitation sendt!')
+      }
+    } catch (e) {
+      toast('Freelancer oprettet – men invitation timeout. Prøv igen.', 'error')
     }
 
     setSaving(false)
