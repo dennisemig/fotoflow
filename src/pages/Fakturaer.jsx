@@ -12,13 +12,21 @@ export default function Fakturaer() {
   const navigate = useNavigate()
   const { toasts, toast } = useToast()
 
-  useEffect(() => { fetchSager() }, [filter])
+  const [kunder, setKunder] = useState({})
+
+  useEffect(() => { fetchSager(); fetchKunder() }, [filter])
+
+  async function fetchKunder() {
+    const { data } = await supabase.from('kunder').select('id, navn')
+    const map = {}
+    if (data) data.forEach(k => { map[k.id] = k.navn })
+    setKunder(map)
+  }
 
   async function fetchSager() {
     setLoading(true)
     let query = supabase.from('sager')
-      .select('id, adresse, dato, status, maegler_navn, maegler_firma, maegler_email, faktureret, faktureret_dato, created_at')
-      .not('status', 'eq', 'ny')
+      .select('id, adresse, dato, status, maegler_navn, maegler_firma, maegler_email, kunde_id, faktureret, faktureret_dato, created_at, kunder(navn)')
       .order('dato', { ascending: false })
 
     if (filter === 'faktureret') query = query.eq('faktureret', true)
@@ -51,13 +59,15 @@ export default function Fakturaer() {
     .sort((a, b) => {
       if (sortering === 'dato_desc') return new Date(b.dato) - new Date(a.dato)
       if (sortering === 'dato_asc') return new Date(a.dato) - new Date(b.dato)
-      if (sortering === 'maegler') return (a.maegler_navn || '').localeCompare(b.maegler_navn || '')
-      if (sortering === 'firma') return (a.maegler_firma || '').localeCompare(b.maegler_firma || '')
+      if (sortering === 'maegler') return (getNavn(a) || '').localeCompare(getNavn(b) || '')
+      if (sortering === 'firma') return (getFirma(a) || '').localeCompare(getFirma(b) || '')
       return 0
     })
 
   // Gruppér efter mægler/firma for overblik
-  const grupperetMæglere = [...new Set(sager.filter(s => !s.faktureret && s.maegler_firma).map(s => s.maegler_firma))]
+  const getNavn = s => s.maegler_navn || s.kunder?.navn || null
+  const getFirma = s => s.maegler_firma || s.kunder?.navn || null
+  const grupperetMæglere = [...new Set(sager.filter(s => !s.faktureret && getFirma(s)).map(s => getFirma(s)))]
 
   const ikkeFaktureret = sager.filter(s => !s.faktureret).length
   const faktureret = sager.filter(s => s.faktureret).length
@@ -89,7 +99,7 @@ export default function Fakturaer() {
           <div className="section-hd">Afventer per mæglerfirma</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {grupperetMæglere.map(firma => {
-              const antal = sager.filter(s => !s.faktureret && s.maegler_firma === firma).length
+              const antal = sager.filter(s => !s.faktureret && getFirma(s) === firma).length
               return (
                 <div key={firma} style={{ background: '#fff5f5', border: '1px solid #fed7d7', borderRadius: 8, padding: '6px 12px', fontSize: 13 }}>
                   <b>{firma}</b>: {antal} sag{antal !== 1 ? 'er' : ''}
@@ -148,7 +158,7 @@ export default function Fakturaer() {
                     <td onClick={() => navigate(`/sager/${s.id}`)} style={{ cursor: 'pointer', color: 'var(--pr)', fontWeight: 500 }}>
                       {s.adresse || '—'}
                     </td>
-                    <td>{s.maegler_navn || '—'}</td>
+                    <td>{s.maegler_navn || s.kunder?.navn || '—'}</td>
                     <td>{s.maegler_firma || '—'}</td>
                     <td>
                       <span className={`badge badge-${s.status === 'leveret' ? 'leveret' : s.status === 'aktiv' ? 'active' : 'done'}`}>
