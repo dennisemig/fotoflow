@@ -9,6 +9,7 @@ export default function SagDetalje() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [sag, setSag] = useState(null)
+  const [fakturerer, setFakturerer] = useState(false)
   const [kunde, setKunde] = useState(null)
   const [freelancer, setFreelancer] = useState(null)
   const [freelancere, setFreelancere] = useState([])
@@ -95,6 +96,19 @@ export default function SagDetalje() {
     } else {
       toast('✓ Sag markeret som leveret')
     }
+  }
+
+  async function markerFaktureret() {
+    if (!confirm(sag.faktureret ? 'Marker sagen som IKKE faktureret?' : 'Marker sagen som faktureret?')) return
+    setFakturerer(true)
+    const nyVærdi = !sag.faktureret
+    await supabase.from('sager').update({
+      faktureret: nyVærdi,
+      faktureret_dato: nyVærdi ? new Date().toISOString() : null
+    }).eq('id', id)
+    setSag(s => ({ ...s, faktureret: nyVærdi, faktureret_dato: nyVærdi ? new Date().toISOString() : null }))
+    setFakturerer(false)
+    toast(nyVærdi ? '✓ Sag markeret som faktureret' : '✓ Fakturering fjernet')
   }
 
   async function saveEdit() {
@@ -229,6 +243,21 @@ export default function SagDetalje() {
             ) : (
               <div className="ok-box">✓ Sag leveret – mægler er notificeret</div>
             )}
+            <div style={{ marginTop: 8 }}>
+              <button onClick={markerFaktureret} disabled={fakturerer} className="btn btn-sm" style={{
+                width: '100%', justifyContent: 'center',
+                background: sag.faktureret ? '#f0fdf4' : '#fff',
+                color: sag.faktureret ? '#2e7d4f' : '#3A4A5A',
+                border: sag.faktureret ? '1.5px solid #2e7d4f' : '1.5px solid #e5e7eb'
+              }}>
+                {fakturerer ? '⏳' : sag.faktureret ? '✅ Faktureret' : '🧾 Marker som faktureret'}
+                {sag.faktureret && sag.faktureret_dato && (
+                  <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.7 }}>
+                    {new Date(sag.faktureret_dato).toLocaleDateString('da-DK')}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="card">
