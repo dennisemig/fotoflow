@@ -14,6 +14,7 @@ import Koersel from './pages/Koersel'
 import Pakker from './pages/Pakker'
 import Bookinger from './pages/Bookinger'
 import Indstillinger from './pages/Indstillinger'
+import Fakturaer from './pages/Fakturaer'
 import Booking from './pages/Booking'
 import Levering from './pages/Levering'
 import AuthCallback from './pages/AuthCallback'
@@ -51,6 +52,7 @@ function AppRoutes() {
         <Route path="koersel" element={<Koersel />} />
         <Route path="pakker" element={<Pakker />} />
         <Route path="bookinger" element={<Bookinger />} />
+        <Route path="fakturaer" element={<Fakturaer />} />
         <Route path="indstillinger" element={<Indstillinger />} />
       </Route>
     </Routes>
