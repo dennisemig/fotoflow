@@ -37,6 +37,7 @@ export default function Layout() {
     { to: '/koersel', label: 'Kørselsrapport', icon: '🚗' },
     { to: '/pakker', label: 'Pakker & Tillæg', icon: '📦' },
     { to: '/bookinger', label: 'Bookinger', icon: '🔔', badge: afventerCount },
+    { to: '/fakturaer', label: 'Fakturaer', icon: '🧾' },
   ]
 
   return (
