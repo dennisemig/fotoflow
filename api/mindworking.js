@@ -1,5 +1,5 @@
 export const config = {
-  api: { bodyParser: false, maxDuration: 60 }
+  api: { bodyParser: false, maxDuration: 300 }
 }
 
 const MW_ENDPOINT = 'https://nybolig.mindworking.eu/api/integrations/media/graphql/'
@@ -73,19 +73,18 @@ export default async function handler(req, res) {
       console.log('CaseId:', caseId)
 
       const resultater = []
-      let position = 1
       const sorterede = [...billeder].sort((a, b) => (a.tag || 'Andet').localeCompare(b.tag || 'Andet'))
 
-      for (const billede of sorterede) {
+      // Upload ét billede — returnerer result-objekt
+      async function uploadBillede(billede) {
         try {
           console.log('Henter fil:', billede.navn)
           const fileResponse = await fetch(billede.url)
-          if (!fileResponse.ok) { resultater.push({ navn: billede.navn, success: false, error: 'Hentning fejlede' }); continue }
+          if (!fileResponse.ok) return { navn: billede.navn, success: false, error: 'Hentning fejlede' }
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
           // Matcher Mindworking HAR-format: felt hedder 'query' (ikke 'operations')
-          // og ingen variables – mutation inline uden file reference i query
           const queryStr = JSON.stringify({
             query: `mutation uploadCaseMedia { createMedia(input: {
               caseId: "${caseId}",
@@ -101,13 +100,13 @@ export default async function handler(req, res) {
           mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
-          console.log('Sender multipart til Mindworking')
+          console.log('Sender multipart til Mindworking:', billede.navn)
           const mfR = await fetch(MW_ENDPOINT, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: mfData
           })
-          console.log('Multipart status:', mfR.status)
+          console.log('Multipart status:', mfR.status, billede.navn)
           const mfText = await mfR.text()
           console.log('Multipart svar:', mfText.slice(0, 300))
 
@@ -115,16 +114,23 @@ export default async function handler(req, res) {
           try { mfJson = JSON.parse(mfText) } catch {}
 
           if (mfJson?.data?.createMedia?.id) {
-            resultater.push({ navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id })
-            position++
-            continue
+            return { navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id }
           }
 
-          resultater.push({ navn: billede.navn, success: false, error: mfText.slice(0, 200) })
+          return { navn: billede.navn, success: false, error: mfText.slice(0, 200) }
 
         } catch (e) {
-          resultater.push({ navn: billede.navn, success: false, error: e.message })
+          return { navn: billede.navn, success: false, error: e.message }
         }
+      }
+
+      // Upload i batches af 5 parallelt for at undgå timeout
+      const BATCH_SIZE = 5
+      for (let i = 0; i < sorterede.length; i += BATCH_SIZE) {
+        const batch = sorterede.slice(i, i + BATCH_SIZE)
+        console.log(`Uploader batch ${Math.floor(i/BATCH_SIZE) + 1} (${batch.length} billeder)`)
+        const batchResultater = await Promise.all(batch.map(b => uploadBillede(b)))
+        resultater.push(...batchResultater)
       }
 
       return res.status(200).json({ success: true, resultater, total: resultater.length, uploadet: resultater.filter(r => r.success).length })
