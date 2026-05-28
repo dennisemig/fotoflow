@@ -30,12 +30,12 @@ export default function Booking() {
   async function fetchOptagedeDatoer() {
     const today = new Date().toISOString().split('T')[0]
     const [sagerRes, blokeringRes] = await Promise.all([
-      supabase.from('sager').select('dato, tidspunkt, tidspunkt_slut').gte('dato', today).not('status', 'eq', 'afsluttet'),
+      supabase.from('sager').select('dato, tidspunkt, tidspunkt_slut, freelancer_id').gte('dato', today).not('status', 'eq', 'afsluttet'),
       supabase.from('kalender_blokeringer').select('dato, tidspunkt, tidspunkt_slut').gte('dato', today)
     ])
     // Kombiner sager og blokeringer – blokeringer uden tidspunkt blokerer hele dagen
     const alleOptagede = [
-      ...(sagerRes.data || []),
+      ...(sagerRes.data || []).filter(s => !s.freelancer_id), // Kun egne sager blokerer
       ...(blokeringRes.data || []).map(b => ({
         dato: b.dato,
         tidspunkt: b.tidspunkt || '00:00',

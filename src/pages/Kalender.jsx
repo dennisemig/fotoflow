@@ -11,6 +11,7 @@ export default function Kalender() {
   const [month, setMonth] = useState(new Date().getMonth())
   const [showModal, setShowModal] = useState(false)
   const [selectedDate, setSelectedDate] = useState(null)
+  const [fane, setFane] = useState('mine') // 'mine' eller 'freelancer'
   const navigate = useNavigate()
   const { toasts, toast } = useToast()
 
@@ -31,7 +32,7 @@ export default function Kalender() {
     const to = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`
     const { data, error } = await supabase
       .from('sager')
-      .select('id, adresse, dato, status, tidspunkt, tidspunkt_slut')
+      .select('id, adresse, dato, status, tidspunkt, tidspunkt_slut, freelancer_id')
       .gte('dato', from)
       .lte('dato', to)
       .order('dato')
@@ -48,9 +49,14 @@ export default function Kalender() {
   const todayStr = new Date().toISOString().split('T')[0]
   const monthName = new Date(year, month, 1).toLocaleString('da-DK', { month: 'long', year: 'numeric' })
 
+  // Egne sager = ingen freelancer tildelt, freelancer sager = med freelancer
+  const egneSager = sager.filter(s => !s.freelancer_id)
+  const freelancerSager = sager.filter(s => !!s.freelancer_id)
+  const visibleSager = fane === 'mine' ? egneSager : freelancerSager
+
   const sagsForDay = (day) => {
     const d = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    return sager.filter(s => s.dato === d)
+    return visibleSager.filter(s => s.dato === d)
   }
 
   const blokeringerForDay = (day) => {
@@ -62,14 +68,25 @@ export default function Kalender() {
   const todayMonth = new Date().getMonth()
   const todayYear = new Date().getFullYear()
 
-  const statusColor = s => ({
-    aktiv: '#2e7d4f', afventer: '#e5a243', leveret: '#0c447c', ny: '#3A4A5A', afsluttet: '#6b7280'
-  }[s] || '#3A4A5A')
+  const statusColor = (s, erFreelancer = false) => {
+    if (erFreelancer) return '#c47800'
+    return ({ aktiv: '#2e7d4f', afventer: '#e5a243', leveret: '#0c447c', ny: '#3A4A5A', afsluttet: '#6b7280' }[s] || '#3A4A5A')
+  }
 
   return (
     <div>
       <ToastContainer toasts={toasts} />
       <div className="page-title">Kalender</div>
+      {/* FANER */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button className={`btn btn-sm ${fane === 'mine' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFane('mine')}>
+          📷 Mine sager ({egneSager.length})
+        </button>
+        <button className={`btn btn-sm ${fane === 'freelancer' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFane('freelancer')}>
+          🤝 Freelancer sager ({freelancerSager.length})
+        </button>
+      </div>
+
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <button className="btn btn-outline btn-sm" onClick={prevMonth}>&#8249; Forrige</button>
@@ -100,7 +117,7 @@ export default function Kalender() {
                 {daySager.map(s => (
                   <div key={s.id}
                     onClick={e => { e.stopPropagation(); navigate('/sager/' + s.id) }}
-                    style={{ fontSize: 9, fontWeight: 600, padding: '2px 5px', borderRadius: 4, marginBottom: 2, cursor: 'pointer', background: statusColor(s.status), color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    style={{ fontSize: 9, fontWeight: 600, padding: '2px 5px', borderRadius: 4, marginBottom: 2, cursor: 'pointer', background: statusColor(s.status, !!s.freelancer_id), color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderLeft: s.freelancer_id ? '3px solid #ff9800' : 'none' }}
                     title={s.adresse}>
                     {s.tidspunkt ? String(s.tidspunkt).slice(0, 5) : ''}{s.tidspunkt_slut ? `–${String(s.tidspunkt_slut).slice(0, 5)}` : ''}{' '}{s.adresse ? s.adresse.split(',')[0] : ''}
                   </div>
@@ -122,7 +139,8 @@ export default function Kalender() {
             { color: '#2e7d4f', label: 'Aktiv' },
             { color: '#e5a243', label: 'Afventer' },
             { color: '#0c447c', label: 'Leveret' },
-            { color: '#6b7280', label: 'Afsluttet' }
+            { color: '#6b7280', label: 'Afsluttet' },
+            { color: '#c47800', label: 'Freelancer' }
           ].map(l => (
             <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
               <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }}></div>
@@ -135,16 +153,16 @@ export default function Kalender() {
       </div>
 
       <div className="card">
-        <div className="section-hd">Sager i {monthName} ({sager.length})</div>
-        {sager.length === 0
-          ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>Ingen sager denne måned – klik på en dag for at oprette</div>
-          : sager.map(s => (
+        <div className="section-hd">{fane === 'mine' ? 'Mine sager' : 'Freelancer sager'} i {monthName} ({visibleSager.length})</div>
+        {visibleSager.length === 0
+          ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>Ingen sager denne måned</div>
+          : visibleSager.map(s => (
             <div key={s.id}
               onClick={() => navigate('/sager/' + s.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--bg)', borderRadius: 8, marginBottom: 6, cursor: 'pointer' }}
               onMouseEnter={e => e.currentTarget.style.background = '#e8edf1'}
               onMouseLeave={e => e.currentTarget.style.background = 'var(--bg)'}>
-              <div style={{ width: 10, height: 10, borderRadius: 3, background: statusColor(s.status), flexShrink: 0 }}></div>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: statusColor(s.status, !!s.freelancer_id), flexShrink: 0 }}></div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 500, fontSize: 13 }}>{s.adresse}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>
