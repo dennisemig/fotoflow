@@ -341,7 +341,7 @@ export default function Booking() {
                         <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{p.max_billeder} billeder · {p.leveringstid}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 700, fontSize: 16, color: '#3A4A5A' }}>{p.pris?.toLocaleString('da-DK')} kr</div>
+                        
                         {form.pakke_id === p.id && <div style={{ fontSize: 11, color: '#2e7d4f', fontWeight: 600 }}>✓ Valgt</div>}
                       </div>
                     </div>
@@ -361,16 +361,13 @@ export default function Booking() {
                       <span style={{ fontSize: 16 }}>{t.ikon}</span>
                       <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{t.navn}</div><div style={{ fontSize: 11, color: '#6b7280' }}>{t.beskrivelse}</div></div>
                       <div style={{ fontWeight: 600, fontSize: 13, color: '#3A4A5A' }}>+ {t.pris?.toLocaleString('da-DK')} kr</div>
+                      
                     </div>
                   ))}
                 </div>
               )}
 
-              {form.pakke_id && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 15, color: '#3A4A5A', padding: '12px 0', borderTop: '1.5px solid #e5e7eb', marginBottom: 16 }}>
-                  <span>Total</span><span>{total.toLocaleString('da-DK')} kr</span>
-                </div>
-              )}
+              
 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setStep(2)}>← Tilbage</button>
@@ -387,7 +384,7 @@ export default function Booking() {
                 <div style={{ fontWeight: 600, color: '#3A4A5A', marginBottom: 6 }}>Din booking:</div>
                 <div>📍 {form.adresse}</div>
                 <div>📅 {form.dato ? new Date(form.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''} · kl. {form.tidspunkt}</div>
-                <div>📦 {valgtPakke?.navn} – {total.toLocaleString('da-DK')} kr</div>
+                <div>📦 {valgtPakke?.navn}</div>
               </div>
 
               <div style={{ marginBottom: 14 }}>
@@ -425,7 +422,7 @@ export default function Booking() {
                   {sending ? 'Sender...' : 'Send booking →'}
                 </button>
               </div>
-              <div style={{ textAlign: 'center', fontSize: 11, color: '#6b7280', marginTop: 8 }}>Ingen betaling kræves nu</div>
+              
             </>
           )}
         </div>
