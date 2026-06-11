@@ -126,8 +126,6 @@ export default async function handler(req, res) {
 
           const mfData = new FormData()
           mfData.append('operations', JSON.stringify({ query: queryStr, variables: variablesObj }))
-          mfData.append('query', queryStr)
-          mfData.append('variables', JSON.stringify(variablesObj))
           mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
