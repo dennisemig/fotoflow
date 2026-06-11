@@ -113,25 +113,23 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
+          // Sæt mediaType automatisk baseret på tag
           const erPlantegning = billede.tag && billede.tag.toLowerCase().includes('plantegning')
           const mediaType = erPlantegning ? 'Plantegning' : 'Billede'
 
-          const operationsStr = JSON.stringify({
-            query: `mutation createMedia($input: CreateMediaInput!) { createMedia(input: $input) { id fileName published tags resourceUrl } }`,
-            variables: {
-              input: {
-                caseId: caseId,
-                description: "",
-                mediaType: mediaType,
-                published: true,
-                tags: billede.tag ? [billede.tag] : [],
-                file: null
-              }
-            }
+          // Matcher Mindworking HAR-format: felt hedder 'query' (ikke 'operations')
+          const queryStr = JSON.stringify({
+            query: `mutation uploadCaseMedia { createMedia(input: {
+              caseId: "${caseId}",
+              description: "${billede.beskrivelse || ''}",
+              mediaType: "${mediaType}",
+              published: true,
+              tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
+            }) { id fileName published tags resourceUrl } }`
           })
 
           const mfData = new FormData()
-          mfData.append('operations', operationsStr)
+          mfData.append('query', queryStr)
           mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
