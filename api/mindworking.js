@@ -1,5 +1,5 @@
 export const config = {
-  api: { bodyParser: false, maxDuration: 300 }
+  api: { bodyParser: true, maxDuration: 60 }
 }
 
 const MW_ENDPOINT = 'https://nybolig.mindworking.eu/api/integrations/media/graphql/'
@@ -43,13 +43,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const body = await new Promise((resolve, reject) => {
-    let data = ''
-    req.on('data', chunk => data += chunk)
-    req.on('end', () => { try { resolve(JSON.parse(data)) } catch(e) { reject(e) } })
-    req.on('error', reject)
-  })
-  const { action, caseNo, billeder } = body
+  const { action, caseNo, billeder } = req.body
 
   try {
     const token = await getToken()
@@ -57,6 +51,35 @@ export default async function handler(req, res) {
     if (action === 'test') {
       const data = await gql(token, `query { viewer { shopByShopNo(shopNo: "N260142") { id } } }`)
       return res.status(200).json({ success: true, shopId: data.viewer.shopByShopNo.id })
+    }
+
+    if (action === 'get_case') {
+      if (!caseNo) return res.status(400).json({ error: 'Mangler caseNo' })
+      console.log('Henter sag:', caseNo)
+      const data = await gql(token, `
+        query GetCase($shopNo: String!, $caseNo: String!) {
+          viewer {
+            caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) {
+              id
+              caseNo
+              liebhaveri
+              address
+              media {
+                items {
+                  id
+                  fileName
+                  resourceUrl
+                  published
+                  description
+                  mediaType
+                  tags
+                }
+              }
+            }
+          }
+        }
+      `, { shopNo: 'N260142', caseNo })
+      return res.status(200).json({ success: true, case: data.viewer.caseByCaseNo })
     }
 
     if (action === 'upload_billeder') {
@@ -73,40 +96,48 @@ export default async function handler(req, res) {
       console.log('CaseId:', caseId)
 
       const resultater = []
+      let position = 1
       const sorterede = [...billeder].sort((a, b) => (a.tag || 'Andet').localeCompare(b.tag || 'Andet'))
 
-      // Upload ét billede — returnerer result-objekt
-      async function uploadBillede(billede) {
+      for (const billede of sorterede) {
         try {
           console.log('Henter fil:', billede.navn)
           const fileResponse = await fetch(billede.url)
-          if (!fileResponse.ok) return { navn: billede.navn, success: false, error: 'Hentning fejlede' }
+          if (!fileResponse.ok) { resultater.push({ navn: billede.navn, success: false, error: 'Hentning fejlede' }); continue }
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
-          // Matcher Mindworking HAR-format: felt hedder 'query' (ikke 'operations')
-          const queryStr = JSON.stringify({
-            query: `mutation uploadCaseMedia { createMedia(input: {
-              caseId: "${caseId}",
-              description: "${billede.beskrivelse || ''}",
-              mediaType: "image/jpg",
+          // Sæt mediaType automatisk baseret på tag
+          const erPlantegning = billede.tag && billede.tag.toLowerCase().includes('plantegning')
+          const mediaType = erPlantegning ? 'Plantegning' : 'Billede'
+
+          // Send både 'operations' OG 'query' så serveren finder et af dem
+          const queryStr = `mutation createMedia($input: CreateMediaInput!) { createMedia(input: $input) { id fileName published tags resourceUrl } }`
+          const variablesObj = {
+            input: {
+              caseId: caseId,
+              description: "",
+              mediaType: mediaType,
               published: true,
-              tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
-            }) { id fileName published tags resourceUrl } }`
-          })
+              tags: billede.tag ? [billede.tag] : [],
+              file: null
+            }
+          }
 
           const mfData = new FormData()
+          mfData.append('operations', JSON.stringify({ query: queryStr, variables: variablesObj }))
           mfData.append('query', queryStr)
+          mfData.append('variables', JSON.stringify(variablesObj))
           mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
-          console.log('Sender multipart til Mindworking:', billede.navn)
+          console.log('Sender multipart til Mindworking')
           const mfR = await fetch(MW_ENDPOINT, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: mfData
           })
-          console.log('Multipart status:', mfR.status, billede.navn)
+          console.log('Multipart status:', mfR.status)
           const mfText = await mfR.text()
           console.log('Multipart svar:', mfText.slice(0, 300))
 
@@ -114,23 +145,16 @@ export default async function handler(req, res) {
           try { mfJson = JSON.parse(mfText) } catch {}
 
           if (mfJson?.data?.createMedia?.id) {
-            return { navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id }
+            resultater.push({ navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id })
+            position++
+            continue
           }
 
-          return { navn: billede.navn, success: false, error: mfText.slice(0, 200) }
+          resultater.push({ navn: billede.navn, success: false, error: mfText.slice(0, 200) })
 
         } catch (e) {
-          return { navn: billede.navn, success: false, error: e.message }
+          resultater.push({ navn: billede.navn, success: false, error: e.message })
         }
-      }
-
-      // Upload i batches af 5 parallelt for at undgå timeout
-      const BATCH_SIZE = 5
-      for (let i = 0; i < sorterede.length; i += BATCH_SIZE) {
-        const batch = sorterede.slice(i, i + BATCH_SIZE)
-        console.log(`Uploader batch ${Math.floor(i/BATCH_SIZE) + 1} (${batch.length} billeder)`)
-        const batchResultater = await Promise.all(batch.map(b => uploadBillede(b)))
-        resultater.push(...batchResultater)
       }
 
       return res.status(200).json({ success: true, resultater, total: resultater.length, uploadet: resultater.filter(r => r.success).length })
