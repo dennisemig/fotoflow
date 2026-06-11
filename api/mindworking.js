@@ -111,21 +111,22 @@ export default async function handler(req, res) {
           const erPlantegning = billede.tag && billede.tag.toLowerCase().includes('plantegning')
           const mediaType = erPlantegning ? 'Plantegning' : 'Billede'
 
-          // Send både 'operations' OG 'query' så serveren finder et af dem
-          const queryStr = `mutation createMedia($input: CreateMediaInput!) { createMedia(input: $input) { id fileName published tags resourceUrl } }`
-          const variablesObj = {
-            input: {
-              caseId: caseId,
-              description: "",
-              mediaType: mediaType,
-              published: true,
-              tags: billede.tag ? [billede.tag] : [],
-              file: null
+          const operationsStr = JSON.stringify({
+            query: `mutation createMedia($input: CreateMediaInput!) { createMedia(input: $input) { id fileName published tags resourceUrl } }`,
+            variables: {
+              input: {
+                caseId: caseId,
+                description: "",
+                mediaType: mediaType,
+                published: true,
+                tags: billede.tag ? [billede.tag] : [],
+                file: null
+              }
             }
-          }
+          })
 
           const mfData = new FormData()
-          mfData.append('operations', JSON.stringify({ query: queryStr, variables: variablesObj }))
+          mfData.append('operations', operationsStr)
           mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
           mfData.append('0', fileBlob, billede.navn)
 
