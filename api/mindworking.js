@@ -107,17 +107,13 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
-          // Sæt mediaType automatisk baseret på tag
-          const erPlantegning = billede.tag && billede.tag.toLowerCase().includes('plantegning')
-          const mediaType = erPlantegning ? 'Plantegning' : 'Billede'
-
           const operationsStr = JSON.stringify({
             query: `mutation createMedia($input: CreateMediaInput!) { createMedia(input: $input) { id fileName published tags resourceUrl } }`,
             variables: {
               input: {
                 caseId: caseId,
                 description: "",
-                mediaType: mediaType,
+                mediaType: "image/jpg",
                 published: true,
                 tags: billede.tag ? [billede.tag] : [],
                 file: null
