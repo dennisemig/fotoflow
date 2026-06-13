@@ -1,5 +1,4 @@
 // api/redraw-floorplan.js
-// Placer denne fil i /api/ i roden af dit FotoFlow-projekt (Vercel serverless function)
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -16,49 +15,75 @@ export default async function handler(req, res) {
 
 Du modtager et foto af en håndtegnet plantegning og returnerer KUN ren SVG-kode — ingen forklaringer, ingen markdown, ingen kommentarer. Start direkte med <svg og slut med </svg>.
 
-SVG-designkrav (Vania Graphics stil):
+DANSKE FORKORTELSER — fortolk altid således:
+- TR eller Terrasse = Terrasse (tegnes som åben, tynde vægge, fill="#f9f9f9")
+- GA eller Garage = Garage (tegnes med tynde vægge, fill="#f5f5f5")  
+- ST eller Stue = Stue
+- VÆ eller Værelse = Værelse
+- EN eller Entré = Entré
+- KØ eller Køkken = Køkken
+- BA eller Bad = Bad
+- WC = Toilet
+- Gang = Gang
+- DISP eller Disp = Disponibelt rum
+- H: efterfulgt af tal = loftshøjde i meter (skriv fx "H: 2.4 m" under rumnavnet)
+- Tal efterfulgt af cm eller blot tal i skitsen = mål i centimeter, konverter til meter (fx 480 → 4.8 m)
+
+LAYOUT-ANALYSE:
+- Analyser skitsen meget grundigt før du tegner
+- Identificér husets overordnede form (rektangel, L-form, T-form etc.)
+- Terrasse og garage er typisk separate blokke tilknyttet hovedbygningen
+- Bevar korrekte proportioner mellem rummene baseret på målene
+- Mål i skitsen er typisk i centimeter — konverter til meter
+
+SVG-DESIGNKRAV (Vania Graphics stil):
 BAGGRUND & LAYOUT
 - Hvid baggrund: <rect width="100%" height="100%" fill="#ffffff"/>
-- viewBox typisk "0 0 1100 700" tilpasset layoutet
-- Stueplan til venstre, 1. sal til højre (hvis begge etager findes)
-- God margen rundt om (min 60px)
+- viewBox tilpasset layoutet, typisk "0 0 1200 750"
+- God margen rundt om (min 80px)
+- Skaler så hele plantegningen fylder godt ud
 
 VÆGGE
-- Ydervægge: stroke="#1a1a1a" stroke-width="6" fill="#ffffff"
-- Indervægge: stroke="#1a1a1a" stroke-width="3" fill="none"
-- Dobbeltlinje-vægge: tegn to parallelle linjer med 4px afstand for ydervægge
+- Ydervægge: fill="#1a1a1a" (tegn som fyldte rektangler med tykkelse 8px)
+- Indervægge: fill="#1a1a1a" (tegn som fyldte rektangler med tykkelse 5px)
+- Rum tegnes som hvide rektangler INDEN I væggene
+- Terrasse/garage: stroke="#1a1a1a" stroke-width="2" fill="#f9f9f9" (tynde vægge)
 
-DØRE & VINDUER
-- Døre: tegn som en bue (quarter-circle arc) i åbningen
-- Vinduer: tre parallelle vandrette linjer i vægåbningen
+DØRE
+- Tegn dørblad som en ret linje + en kvartcirkel bue
+- <line> for dørblad + <path d="M x1,y1 A r,r 0 0,1 x2,y2"> for buesvingen
+- stroke="#1a1a1a" stroke-width="1.5" fill="none"
+
+VINDUER
+- Tre tætte parallelle linjer på tværs af væggen
+- stroke="#1a1a1a" stroke-width="1"
 
 RUM-LABELS
 - Rumnavne: font-family="Georgia, serif" font-size="13" fill="#222222" text-anchor="middle"
+- Loftshøjde under rumnavn: font-family="Georgia, serif" font-size="10" fill="#888888" text-anchor="middle" font-style="italic"
 - Mål langs vægge: font-family="Arial, sans-serif" font-size="10" fill="#999999" text-anchor="middle"
-- Mål placeres uden for rummet langs den relevante væg
+- Mål placeres UDEN FOR rummet langs den relevante væg med 15px afstand
 
 SPECIAL RUM
 - Bad/toilet: lys blå baggrund fill="#dff0f5"
-- Køkken: meget lys grøn fill="#f0f5e8" (kun hvis tydeligt markeret som køkken)
-- Andre rum: fill="#ffffff"
-
-ETAGE-LABELS
-- "Stueplan" og "1. sal" som sektionsetiketter: font-family="Georgia, serif" font-size="14" fill="#555555" font-style="italic"
-- Placeret under den respektive etage
+- Entré: lys grå fill="#f5f5f3"
+- Alle andre rum: fill="#ffffff"
 
 BRANDING (Vania Graphics)
-- Nederst til venstre: "vania." i font-size="16" font-weight="bold" fill="#1a1a1a" + "GRAPHICS" i font-size="8" fill="#888888" letter-spacing="2"
-- Nederst i midten: adressetitel i font-size="20" font-family="Georgia, serif" fill="#1a1a1a"
-- Under titel: "Vejledende Mål Uden Ansvar" i font-size="10" fill="#999999"
-- Øverst til højre: nord-pil (simpel trekant + "N")
+- Nederst til venstre: "vania." font-size="18" font-weight="bold" font-family="Georgia, serif" fill="#1a1a1a"
+- Under "vania.": "GRAPHICS" font-size="8" fill="#aaaaaa" letter-spacing="3"
+- Nederst i midten: adressenavn font-size="22" font-family="Georgia, serif" fill="#1a1a1a"
+- Under adresse: "Vejledende Mål Uden Ansvar" font-size="10" fill="#aaaaaa"
+- Øverst til højre: nord-pil
 
-NORD-PIL
-<g transform="translate(X, Y)">
-  <polygon points="0,-14 5,0 -5,0" fill="#1a1a1a"/>
-  <text x="0" y="16" text-anchor="middle" font-family="Arial" font-size="10" fill="#1a1a1a">N</text>
+NORD-PIL (øverst til højre):
+<g transform="translate(X, 60)">
+  <circle cx="0" cy="0" r="20" fill="none" stroke="#1a1a1a" stroke-width="1"/>
+  <polygon points="0,-14 4,4 0,0 -4,4" fill="#1a1a1a"/>
+  <text x="0" y="34" text-anchor="middle" font-family="Arial" font-size="11" fill="#1a1a1a" font-weight="bold">N</text>
 </g>
 
-Analyser skitsen præcist: rum-positioner, relative størrelser, alle mål (konverter cm til m hvis nødvendigt), og gentegn med korrekte proportioner. Returner UDELUKKENDE SVG-koden.`
+Analyser skitsen meget præcist. Returner UDELUKKENDE SVG-koden startende med <svg.`
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -86,7 +111,7 @@ Analyser skitsen præcist: rum-positioner, relative størrelser, alle mål (konv
               },
               {
                 type: 'text',
-                text: `Analyser denne håndtegnede plantegning og returner en præcis, ren SVG i professionel Vania Graphics-stil.${address ? ` Adressen er: ${address}.` : ''} Hav stueplan til venstre og 1. sal til højre i SVG'en. Returner KUN SVG-koden.`
+                text: `Analyser denne håndtegnede danske plantegning grundigt. Brug de korrekte danske betegnelser: TR=Terrasse, VÆ=Værelse, EN=Entré, KØ=Køkken, BA=Bad, ST=Stue, DISP=Disponibelt rum. Mål er i centimeter — konverter til meter. Returner en præcis SVG i Vania Graphics-stil.${address ? ` Adresse: ${address}.` : ''} Returner KUN SVG-koden.`
               }
             ]
           }
