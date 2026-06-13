@@ -19,6 +19,7 @@ import Booking from './pages/Booking'
 import Levering from './pages/Levering'
 import AuthCallback from './pages/AuthCallback'
 import SetPassword from './pages/SetPassword'
+import FloorplanRedraw from './pages/FloorplanRedraw'
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
@@ -54,6 +55,7 @@ function AppRoutes() {
         <Route path="bookinger" element={<Bookinger />} />
         <Route path="fakturaer" element={<Fakturaer />} />
         <Route path="indstillinger" element={<Indstillinger />} />
+        <Route path="plantegning" element={<FloorplanRedraw />} />
       </Route>
     </Routes>
   )
