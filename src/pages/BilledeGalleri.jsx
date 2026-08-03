@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const TAGS = [
-  'Facade', 'Have', 'Terrasse', 'Stue', 'Køkken', 'Alrum',
-  'Badeværelse', 'Toilet', 'Soveværelse', 'Værelse', 'Kontor',
-  'Kælder', 'Garage', 'Bryggers', 'Gang', 'Trapperum',
-  'Plantegning', 'Disponibelt rum', 'Andet'
+  'Alrum', 'Andet', 'Badeværelse', 'Bryggers', 'Disponibelt rum',
+  'Entré', 'Facade', 'Gang', 'Garage', 'Have',
+  'Kælder', 'Kontor', 'Køkken', 'Luftfoto', 'Plantegning',
+  'Soveværelse', 'Stue', 'Terrasse', 'Toilet', 'Trapperum',
+  'Udsigt', 'Værelse'
 ]
 
 export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
@@ -144,7 +145,7 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
 
   const alleValgt = uploads.length > 0 && valgte.size === uploads.length
   const tagColor = tag => {
-    const colors = { 'Facade': '#3b82f6', 'Have': '#22c55e', 'Terrasse': '#84cc16', 'Stue': '#f59e0b', 'Køkken': '#ef4444', 'Badeværelse': '#06b6d4', 'Soveværelse': '#8b5cf6', 'Plantegning': '#6b7280' }
+    const colors = { 'Facade': '#3b82f6', 'Have': '#22c55e', 'Terrasse': '#84cc16', 'Stue': '#f59e0b', 'Køkken': '#ef4444', 'Badeværelse': '#06b6d4', 'Soveværelse': '#8b5cf6', 'Plantegning': '#6b7280', 'Luftfoto': '#0ea5e9', 'Entré': '#f97316', 'Udsigt': '#14b8a6' }
     return colors[tag] || '#3A4A5A'
   }
 
