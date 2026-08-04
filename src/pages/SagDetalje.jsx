@@ -241,7 +241,15 @@ export default function SagDetalje() {
                 📸 Marker som leveret – send mail til mægler
               </button>
             ) : (
-              <div className="ok-box">✓ Sag leveret – mægler er notificeret</div>
+              <div>
+                <div className="ok-box" style={{ marginBottom: 8 }}>✓ Sag leveret – mægler er notificeret</div>
+                {sag.levering_token && (
+                  <a href={`${window.location.origin}/levering/${sag.levering_token}`} target="_blank" rel="noreferrer"
+                    className="btn btn-sm btn-outline" style={{ width: '100%', justifyContent: 'center', display: 'flex' }}>
+                    🔗 Se galleri som mægler ser det
+                  </a>
+                )}
+              </div>
             )}
             <div style={{ marginTop: 8 }}>
               <button onClick={markerFaktureret} disabled={fakturerer} className="btn btn-sm" style={{
