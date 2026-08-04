@@ -236,7 +236,7 @@ export default function SagDetalje() {
                 <button key={s} onClick={() => updateStatus(s)} className={`btn btn-sm ${sag.status === s ? 'btn-primary' : 'btn-outline'}`}>{statusLabel(s)}</button>
               ))}
             </div>
-            {sag.status !== 'leveret' ? (
+            {sag.status !== 'leveret' && sag.status !== 'afsluttet' ? (
               <button onClick={leverSag} className="btn btn-sm" style={{ background: '#2e7d4f', color: '#fff', width: '100%', justifyContent: 'center' }}>
                 📸 Marker som leveret – send mail til mægler
               </button>
