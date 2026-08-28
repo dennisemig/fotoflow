@@ -22,7 +22,7 @@ async function beregnKm(fraAdresse, tilAdresse) {
     const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${fra.lng},${fra.lat};${til.lng},${til.lat}?overview=false`)
     const d = await r.json()
     if (d.code === 'Ok' && d.routes.length > 0) {
-      return Math.round(d.routes[0].distance / 1000 * 10) / 10
+      return Math.round(d.routes[0].distance / 1000 * 10) / 10 // km med 1 decimal
     }
   } catch (e) {}
   return null
@@ -42,7 +42,7 @@ export default function Sager() {
     setLoading(true)
     const { data: sagerData, error } = await supabase
       .from('sager')
-      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer')
+      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma')
       .order('created_at', { ascending: false })
 
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
@@ -92,7 +92,7 @@ export default function Sager() {
           <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
-                <tr><th>Kunde / Mægler</th><th>Adresse</th><th>Sagsnr.</th><th>Dato</th><th>Type</th><th>Freelancer</th><th>Status</th><th></th></tr>
+                <tr><th>Kunde / Mægler</th><th>Adresse</th><th>Dato</th><th>Type</th><th>Freelancer</th><th>Status</th><th></th></tr>
               </thead>
               <tbody>
                 {filtered.map(s => (
@@ -106,7 +106,6 @@ export default function Sager() {
                       }
                     </td>
                     <td>{s.adresse || '—'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--muted)' }}>{s.maegler_sagsnummer || '—'}</td>
                     <td>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
                     <td style={{ textTransform: 'capitalize' }}>{s.type || '—'}</td>
                     <td>{s.freelancer?.navn || <span style={{ color: 'var(--muted)', fontSize: 12 }}>Ingen</span>}</td>
@@ -125,15 +124,9 @@ export default function Sager() {
 }
 
 function OpretSagModal({ onClose, onSaved, toast }) {
-  const [form, setForm] = useState({
-    adresse: '', dato: '', tidspunkt: '09:00', tidspunkt_slut: '11:00',
-    type: 'ejendom', freelancer_id: '', kunde_id: '',
-    maks_billeder: 20, noter: '', maegler_sagsnummer: ''
-  })
+  const [form, setForm] = useState({ adresse: '', dato: '', tidspunkt: '09:00', tidspunkt_slut: '11:00', type: 'ejendom', freelancer_id: '', kunde_id: '', maks_billeder: 20, noter: '' })
   const [kunder, setKunder] = useState([])
   const [freelancere, setFreelancere] = useState([])
-  const [kundeYdelser, setKundeYdelser] = useState([])
-  const [valgteYdelser, setValgteYdelser] = useState([]) // [{ydelse, antal}]
   const [bbr, setBbr] = useState(null)
   const [bbrLoading, setBbrLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -144,6 +137,7 @@ function OpretSagModal({ onClose, onSaved, toast }) {
   useEffect(() => {
     supabase.from('kunder').select('id, navn').order('navn').then(({ data }) => setKunder(data || []))
     supabase.from('freelancere').select('id, navn').eq('aktiv', true).then(({ data }) => setFreelancere(data || []))
+    // Hent startadresse fra profil
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
         const { data } = await supabase.from('profiles').select('startadresse').eq('id', user.id).single()
@@ -151,30 +145,6 @@ function OpretSagModal({ onClose, onSaved, toast }) {
       }
     })
   }, [])
-
-  // Hent kundespecifikke ydelser når kunde vælges
-  useEffect(() => {
-    if (!form.kunde_id) { setKundeYdelser([]); setValgteYdelser([]); return }
-    supabase.from('kunde_ydelser')
-      .select('*')
-      .eq('kunde_id', form.kunde_id)
-      .eq('aktiv', true)
-      .order('navn')
-      .then(({ data }) => {
-        setKundeYdelser(data || [])
-        setValgteYdelser([])
-      })
-  }, [form.kunde_id])
-
-  function toggleYdelse(ydelse) {
-    setValgteYdelser(prev => {
-      const exists = prev.find(v => v.ydelse.id === ydelse.id)
-      if (exists) return prev.filter(v => v.ydelse.id !== ydelse.id)
-      return [...prev, { ydelse, antal: 1 }]
-    })
-  }
-
-  const ydelsesTotal = valgteYdelser.reduce((sum, v) => sum + v.ydelse.pris * v.antal, 0)
 
   async function lookupBBRogKm(adresse) {
     if (adresse.length < 6) return
@@ -194,6 +164,8 @@ function OpretSagModal({ onClose, onSaved, toast }) {
         let grundareal = null, etager = null
         if (d3 && d3.length > 0) { grundareal = d3[0].byg041BebyggetAreal || null; etager = d3[0].byg054AntalEtager || null }
         setBbr({ adresseId, adgAdrId, boligareal, grundareal, etager })
+
+        // Beregn km hvis startadresse er sat
         if (startadresse) {
           const km = await beregnKm(startadresse, adresse)
           if (km) setKmInfo({ km, tur_retur: Math.round(km * 2 * 10) / 10 })
@@ -207,12 +179,13 @@ function OpretSagModal({ onClose, onSaved, toast }) {
     if (!form.adresse || !form.dato) { toast('Udfyld adresse og dato', 'error'); return }
     setSaving(true)
 
+    // Beregn km hvis ikke allerede gjort
     let km = kmInfo?.km || null
     if (!km && startadresse && form.adresse) {
       km = await beregnKm(startadresse, form.adresse)
     }
 
-    const { data: sagData, error } = await supabase.from('sager').insert([{
+    const { error } = await supabase.from('sager').insert([{
       adresse: form.adresse,
       dato: form.dato,
       tidspunkt: form.tidspunkt || null,
@@ -222,36 +195,18 @@ function OpretSagModal({ onClose, onSaved, toast }) {
       kunde_id: form.kunde_id || null,
       maks_billeder: form.maks_billeder,
       noter: form.noter || null,
-      maegler_sagsnummer: form.maegler_sagsnummer || null,
       status: 'ny',
       bbr_data: bbr || null,
       km_distance: km,
-    }]).select('id').single()
-
+    }])
     if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
-
-    // Gem valgte ydelser
-    if (sagData?.id && valgteYdelser.length > 0) {
-      await supabase.from('sag_ydelser').insert(
-        valgteYdelser.map(v => ({
-          sag_id: sagData.id,
-          ydelse_id: v.ydelse.id,
-          navn: v.ydelse.navn,
-          pris: v.ydelse.pris,
-          antal: v.antal
-        }))
-      )
-    }
-
-    setSaving(false)
-    onSaved()
+    setSaving(false); onSaved()
   }
 
   return (
     <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-title">Opret ny sag<button className="modal-close" onClick={onClose}>✕</button></div>
-
         <div className="form-group">
           <label>Adresse *</label>
           <input value={form.adresse} onChange={e => set('adresse', e.target.value)}
@@ -268,81 +223,12 @@ function OpretSagModal({ onClose, onSaved, toast }) {
             <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 4 }}>⚠ Sæt din startadresse under Indstillinger for automatisk km-beregning</div>
           )}
         </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="form-group">
-            <label>Kunde (valgfrit)</label>
-            <select value={form.kunde_id} onChange={e => set('kunde_id', e.target.value)}>
-              <option value="">— Vælg kunde —</option>
-              {kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Mindworking sagsnummer</label>
-            <input
-              value={form.maegler_sagsnummer}
-              onChange={e => set('maegler_sagsnummer', e.target.value)}
-              placeholder="f.eks. N2601420000799"
-            />
-          </div>
+        <div className="form-group"><label>Kunde (valgfrit)</label>
+          <select value={form.kunde_id} onChange={e => set('kunde_id', e.target.value)}>
+            <option value="">— Vælg kunde —</option>
+            {kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}
+          </select>
         </div>
-
-        {/* Kundespecifikke ydelser */}
-        {form.kunde_id && kundeYdelser.length > 0 && (
-          <div className="form-group">
-            <label>Ydelser</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {kundeYdelser.map(y => {
-                const valgt = valgteYdelser.find(v => v.ydelse.id === y.id)
-                return (
-                  <div
-                    key={y.id}
-                    onClick={() => toggleYdelse(y)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
-                      border: `1px solid ${valgt ? 'var(--pr)' : 'var(--brd)'}`,
-                      background: valgt ? 'var(--pr-light, #ebf4ff)' : '#fff',
-                      transition: 'all 0.15s'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
-                        width: 18, height: 18, borderRadius: 4,
-                        border: `2px solid ${valgt ? 'var(--pr)' : 'var(--brd)'}`,
-                        background: valgt ? 'var(--pr)' : '#fff',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 11, color: '#fff', flexShrink: 0
-                      }}>
-                        {valgt ? '✓' : ''}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{y.ikon} {y.navn}</div>
-                        {y.beskrivelse && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{y.beskrivelse}</div>}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: valgt ? 'var(--pr)' : 'var(--muted)' }}>
-                      {y.pris.toLocaleString('da-DK')} kr.
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            {valgteYdelser.length > 0 && (
-              <div style={{ marginTop: 10, padding: '10px 14px', background: '#f7fafc', borderRadius: 8, display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                <span style={{ color: 'var(--muted)' }}>{valgteYdelser.length} ydelse{valgteYdelser.length !== 1 ? 'r' : ''} valgt</span>
-                <span style={{ fontWeight: 700 }}>{ydelsesTotal.toLocaleString('da-DK')} kr. ex moms</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {form.kunde_id && kundeYdelser.length === 0 && (
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12, padding: '10px 14px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a' }}>
-            ⚠ Ingen ydelser oprettet for denne kunde endnu. Opret dem under Kunder.
-          </div>
-        )}
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="form-group"><label>Dato *</label><input type="date" value={form.dato} onChange={e => set('dato', e.target.value)} /></div>
           <div></div>
