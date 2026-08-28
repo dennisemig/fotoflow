@@ -42,7 +42,7 @@ export default function Sager() {
     setLoading(true)
     const { data: sagerData, error } = await supabase
       .from('sager')
-      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma')
+      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer')
       .order('created_at', { ascending: false })
 
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
@@ -92,7 +92,7 @@ export default function Sager() {
           <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
-                <tr><th>Kunde / Mægler</th><th>Adresse</th><th>Dato</th><th>Type</th><th>Freelancer</th><th>Status</th><th></th></tr>
+                <tr><th>Kunde / Mægler</th><th>Adresse</th><th>Sagsnr.</th><th>Dato</th><th>Type</th><th>Freelancer</th><th>Status</th><th></th></tr>
               </thead>
               <tbody>
                 {filtered.map(s => (
@@ -106,6 +106,7 @@ export default function Sager() {
                       }
                     </td>
                     <td>{s.adresse || '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--muted)' }}>{s.maegler_sagsnummer || '—'}</td>
                     <td>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
                     <td style={{ textTransform: 'capitalize' }}>{s.type || '—'}</td>
                     <td>{s.freelancer?.navn || <span style={{ color: 'var(--muted)', fontSize: 12 }}>Ingen</span>}</td>
