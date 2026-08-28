@@ -31,7 +31,7 @@ export default function SagDetalje() {
   async function fetchSag() {
     const { data } = await supabase.from('sager').select('*').eq('id', id).single()
     if (!data) return
-    setSag(data); setNoter(data.noter || ''); setMwNummer(data.mindworking_sagsnummer || '')
+    setSag(data); setNoter(data.noter || ''); setMwNummer(data.maegler_sagsnummer || '')
     setEditForm({ adresse: data.adresse || '', dato: data.dato || '', tidspunkt: data.tidspunkt ? String(data.tidspunkt).slice(0,5) : '', tidspunkt_slut: data.tidspunkt_slut ? String(data.tidspunkt_slut).slice(0,5) : '', type: data.type || 'ejendom', maks_billeder: data.maks_billeder || 20, kunde_id: data.kunde_id || '', freelancer_id: data.freelancer_id || '' })
     if (data.kunde_id) { const { data: k } = await supabase.from('kunder').select('*').eq('id', data.kunde_id).single(); setKunde(k) }
     if (data.freelancer_id) { const { data: f } = await supabase.from('freelancere').select('*').eq('id', data.freelancer_id).single(); setFreelancer(f) }
@@ -117,7 +117,7 @@ export default function SagDetalje() {
     setSaving(false); setEditing(false); fetchSag(); toast('✓ Sag opdateret')
   }
   async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); toast('✓ Noter gemt') }
-  async function saveMwNummer() { await supabase.from('sager').update({ mindworking_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, mindworking_sagsnummer: mwNummer })); toast('✓ Gemt') }
+  async function saveMwNummer() { await supabase.from('sager').update({ maegler_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, maegler_sagsnummer: mwNummer })); toast('✓ Gemt') }
 
   async function hentMwSag() {
     if (!mwNummer) return
@@ -273,7 +273,7 @@ export default function SagDetalje() {
             <div className="form-group" style={{ marginBottom: 10 }}>
               <label>Mindworking sagsnummer</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. MW-2024-1234" style={{ flex: 1 }} />
+                <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. N2601420000799" style={{ flex: 1 }} />
                 <button className="btn btn-primary btn-sm" onClick={saveMwNummer}>Gem</button>
               </div>
             </div>
@@ -282,7 +282,7 @@ export default function SagDetalje() {
                 {mwLoading ? '⏳ Henter...' : '🔍 Hent sagsoplysninger fra Mindworking'}
               </button>
             )}
-              {mwData && (
+            {mwData && (
               <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 14, marginBottom: 10, fontSize: 13 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>Sagsdata fra Mindworking</div>
                 {mwData.address && <div style={{ marginBottom: 4 }}>📍 <span style={{ color: 'var(--muted)' }}>Adresse:</span> <b>{mwData.address}{mwData.zipCode ? `, ${mwData.zipCode}` : ''}{mwData.city ? ` ${mwData.city}` : ''}</b></div>}
@@ -337,7 +337,7 @@ export default function SagDetalje() {
             <BilledeGalleri
               sagId={id}
               sagAdresse={sag?.adresse}
-              mwNummer={sag?.mindworking_sagsnummer}
+              mwNummer={sag?.maegler_sagsnummer}
               toast={toast}
             />
           </div>
