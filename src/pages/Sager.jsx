@@ -124,7 +124,7 @@ export default function Sager() {
 }
 
 function OpretSagModal({ onClose, onSaved, toast }) {
-  const [form, setForm] = useState({ adresse: '', dato: '', tidspunkt: '09:00', tidspunkt_slut: '11:00', type: 'ejendom', freelancer_id: '', kunde_id: '', maks_billeder: 20, noter: '' })
+  const [form, setForm] = useState({ adresse: '', dato: '', tidspunkt: '09:00', tidspunkt_slut: '11:00', type: 'ejendom', freelancer_id: '', kunde_id: '', maks_billeder: 20, noter: '', maegler_sagsnummer: '' })
   const [kunder, setKunder] = useState([])
   const [freelancere, setFreelancere] = useState([])
   const [bbr, setBbr] = useState(null)
@@ -198,6 +198,7 @@ function OpretSagModal({ onClose, onSaved, toast }) {
       status: 'ny',
       bbr_data: bbr || null,
       km_distance: km,
+      maegler_sagsnummer: form.maegler_sagsnummer || null,
     }])
     if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
     setSaving(false); onSaved()
@@ -223,11 +224,16 @@ function OpretSagModal({ onClose, onSaved, toast }) {
             <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 4 }}>⚠ Sæt din startadresse under Indstillinger for automatisk km-beregning</div>
           )}
         </div>
-        <div className="form-group"><label>Kunde (valgfrit)</label>
-          <select value={form.kunde_id} onChange={e => set('kunde_id', e.target.value)}>
-            <option value="">— Vælg kunde —</option>
-            {kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}
-          </select>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-group"><label>Kunde (valgfrit)</label>
+            <select value={form.kunde_id} onChange={e => set('kunde_id', e.target.value)}>
+              <option value="">— Vælg kunde —</option>
+              {kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}
+            </select>
+          </div>
+          <div className="form-group"><label>Mindworking sagsnummer</label>
+            <input value={form.maegler_sagsnummer} onChange={e => set('maegler_sagsnummer', e.target.value)} placeholder="f.eks. N2601420000799" />
+          </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="form-group"><label>Dato *</label><input type="date" value={form.dato} onChange={e => set('dato', e.target.value)} /></div>
