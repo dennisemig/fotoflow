@@ -28,7 +28,7 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
       .from('uploads')
       .select('*')
       .eq('sag_id', sagId)
-      .order('bruger_tag', { ascending: true, nullsFirst: false })
+      .order('bruger_tag', { ascending: true, nullsFirst: true })
     setUploads(data || [])
     data?.forEach(u => {
       if (u.type === 'billede' || /\.(jpg|jpeg|png|gif|webp)$/i.test(u.filnavn)) {
@@ -87,10 +87,15 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
     if (!tag) return
     const ids = Array.from(valgte)
     await supabase.from('uploads').update({ bruger_tag: tag }).in('id', ids)
+    setValgte(new Set())
     setShowBulkTag(false)
     setBulkTag('')
-    setValgte(new Set())
-    await fetchUploads()
+    const { data } = await supabase
+      .from('uploads')
+      .select('*')
+      .eq('sag_id', sagId)
+      .order('bruger_tag', { ascending: true, nullsFirst: true })
+    setUploads(data || [])
     toast?.(`✓ Tag "${tag}" sat på ${ids.length} billede${ids.length !== 1 ? 'r' : ''}`)
   }
 
@@ -241,7 +246,7 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
                       {TAGS.map(t => (
                         <div
                           key={t}
-                          onClick={() => setBulkTagOnValgte(t)}
+                          onClick={e => { e.stopPropagation(); setBulkTagOnValgte(t) }}
                           style={{ padding: '7px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
                           onMouseEnter={e => e.currentTarget.style.background = '#f0f4f8'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
