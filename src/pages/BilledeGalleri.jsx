@@ -87,9 +87,10 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
     if (!tag) return
     const ids = Array.from(valgte)
     await supabase.from('uploads').update({ bruger_tag: tag }).in('id', ids)
-    setUploads(u => u.map(x => valgte.has(x.id) ? { ...x, bruger_tag: tag } : x))
     setShowBulkTag(false)
     setBulkTag('')
+    setValgte(new Set())
+    await fetchUploads()
     toast?.(`✓ Tag "${tag}" sat på ${ids.length} billede${ids.length !== 1 ? 'r' : ''}`)
   }
 
