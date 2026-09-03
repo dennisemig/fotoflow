@@ -17,7 +17,6 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
   const [thumbnails, setThumbnails] = useState({})
   const [editTag, setEditTag] = useState(null)
   const [sending, setSending] = useState(false)
-  const [bulkTag, setBulkTag] = useState('')
   const [showBulkTag, setShowBulkTag] = useState(false)
   const fileInputRef = useRef()
 
@@ -28,7 +27,7 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
       .from('uploads')
       .select('*')
       .eq('sag_id', sagId)
-      .order('bruger_tag', { ascending: true, nullsFirst: true })
+      .order('bruger_tag', { ascending: true, nullsFirst: false })
     setUploads(data || [])
     data?.forEach(u => {
       if (u.type === 'billede' || /\.(jpg|jpeg|png|gif|webp)$/i.test(u.filnavn)) {
@@ -82,20 +81,14 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
     toast?.(`✓ Tag sat: ${tag}`)
   }
 
-  // Sæt samme tag på alle valgte billeder
+  // Bulk tag — opdater state direkte uden at genindlæse
   async function setBulkTagOnValgte(tag) {
     if (!tag) return
     const ids = Array.from(valgte)
     await supabase.from('uploads').update({ bruger_tag: tag }).in('id', ids)
-    setValgte(new Set())
+    setUploads(prev => prev.map(u => ids.includes(u.id) ? { ...u, bruger_tag: tag } : u))
     setShowBulkTag(false)
-    setBulkTag('')
-    const { data } = await supabase
-      .from('uploads')
-      .select('*')
-      .eq('sag_id', sagId)
-      .order('bruger_tag', { ascending: true, nullsFirst: true })
-    setUploads(data || [])
+    setValgte(new Set())
     toast?.(`✓ Tag "${tag}" sat på ${ids.length} billede${ids.length !== 1 ? 'r' : ''}`)
   }
 
@@ -152,18 +145,6 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
 
   function vælgAlle() {
     setValgte(alleValgt ? new Set() : new Set(uploads.map(u => u.id)))
-  }
-
-  // Vælg alle i en bestemt gruppe
-  function vælgGruppe(tag) {
-    const ids = uploads.filter(u => (u.bruger_tag || '— Ikke tagget') === tag).map(u => u.id)
-    const alleIGruppe = ids.every(id => valgte.has(id))
-    setValgte(v => {
-      const ny = new Set(v)
-      if (alleIGruppe) ids.forEach(id => ny.delete(id))
-      else ids.forEach(id => ny.add(id))
-      return ny
-    })
   }
 
   // Gruppér uploads efter tag
@@ -230,16 +211,18 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
                   {valgte.size} valgt
                 </div>
 
-                {/* BULK TAG */}
+                {/* BULK TAG KNAP */}
                 <div style={{ position: 'relative' }}>
                   <button
-                    onClick={() => setShowBulkTag(v => !v)}
+                    onClick={e => { e.stopPropagation(); setShowBulkTag(v => !v) }}
                     className="btn btn-sm"
                     style={{ background: '#f59e0b', color: '#fff', fontSize: 12 }}>
                     🏷 Tag valgte
                   </button>
                   {showBulkTag && (
-                    <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 100, background: '#fff', border: '1px solid var(--brd)', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.12)', padding: 8, minWidth: 180 }}>
+                    <div
+                      onClick={e => e.stopPropagation()}
+                      style={{ position: 'absolute', top: '110%', left: 0, zIndex: 100, background: '#fff', border: '1px solid var(--brd)', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.12)', padding: 8, minWidth: 180 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', padding: '4px 8px 8px' }}>
                         Sæt tag på {valgte.size} billede{valgte.size !== 1 ? 'r' : ''}
                       </div>
@@ -276,98 +259,87 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
           </div>
 
           {/* GROUPED GRID */}
-          {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([tag, items]) => {
-            const alleIGruppeValgt = items.every(u => valgte.has(u.id))
-            return (
-              <div key={tag} style={{ marginBottom: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: tagColor(tag), flexShrink: 0 }}></div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--tx)' }}>{tag}</div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>({items.length})</div>
-                  {/* Vælg hele gruppen */}
-                  <button
-                    onClick={() => vælgGruppe(tag)}
-                    className="btn btn-outline btn-sm"
-                    style={{ fontSize: 10, padding: '2px 8px', marginLeft: 4 }}>
-                    {alleIGruppeValgt ? '☑ Fravælg' : '☐ Vælg alle'}
-                  </button>
-                  <div style={{ flex: 1, height: 1, background: 'var(--brd)' }}></div>
-                </div>
+          {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([tag, items]) => (
+            <div key={tag} style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: tagColor(tag), flexShrink: 0 }}></div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--tx)' }}>{tag}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>({items.length})</div>
+                <div style={{ flex: 1, height: 1, background: 'var(--brd)' }}></div>
+              </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
-                  {items.map(u => {
-                    const erValgt = valgte.has(u.id)
-                    const thumbnail = thumbnails[u.id]
-                    const erBillede = u.type === 'billede' || /\.(jpg|jpeg|png|gif|webp)$/i.test(u.filnavn)
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+                {items.map(u => {
+                  const erValgt = valgte.has(u.id)
+                  const thumbnail = thumbnails[u.id]
 
-                    return (
-                      <div key={u.id} style={{ borderRadius: 10, overflow: 'hidden', border: erValgt ? '3px solid var(--pr)' : '3px solid transparent', background: 'var(--bg)', boxShadow: erValgt ? '0 0 0 1px var(--pr)' : '0 1px 4px rgba(0,0,0,.08)', transition: 'all .15s' }}>
+                  return (
+                    <div key={u.id} style={{ borderRadius: 10, overflow: 'hidden', border: erValgt ? '3px solid var(--pr)' : '3px solid transparent', background: 'var(--bg)', boxShadow: erValgt ? '0 0 0 1px var(--pr)' : '0 1px 4px rgba(0,0,0,.08)', transition: 'all .15s' }}>
 
-                        {/* BILLEDE */}
-                        <div
-                          onClick={() => toggleValgt(u.id)}
-                          style={{ position: 'relative', width: '100%', paddingBottom: '80%', background: '#dde3e8', cursor: 'pointer' }}>
-                          {thumbnail ? (
-                            <img src={thumbnail} alt={u.filnavn}
-                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4 }}>
-                              <div style={{ fontSize: 28 }}>{u.type === 'raw' ? '📷' : u.type === 'billede' ? '🖼' : '📄'}</div>
-                              <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>{u.filnavn?.split('.').pop()}</div>
-                            </div>
-                          )}
-
-                          {/* VALGT OVERLAY */}
-                          {erValgt && (
-                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(58,74,90,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--pr)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700 }}>✓</div>
-                            </div>
-                          )}
-
-                          {/* ÅBEN KNAP */}
-                          <div onClick={e => { e.stopPropagation(); openFile(u) }}
-                            style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.5)', color: '#fff', borderRadius: 6, padding: '3px 7px', fontSize: 11, cursor: 'pointer' }}>
-                            ↗
+                      {/* BILLEDE */}
+                      <div
+                        onClick={() => toggleValgt(u.id)}
+                        style={{ position: 'relative', width: '100%', paddingBottom: '80%', background: '#dde3e8', cursor: 'pointer' }}>
+                        {thumbnail ? (
+                          <img src={thumbnail} alt={u.filnavn}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ fontSize: 28 }}>{u.type === 'raw' ? '📷' : u.type === 'billede' ? '🖼' : '📄'}</div>
+                            <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>{u.filnavn?.split('.').pop()}</div>
                           </div>
-                        </div>
+                        )}
 
-                        {/* FILNAVN + TAG */}
-                        <div style={{ padding: '8px 8px 6px' }}>
-                          <div style={{ fontSize: 11, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6, color: 'var(--tx)' }} title={u.filnavn}>
-                            {u.filnavn}
+                        {/* VALGT OVERLAY */}
+                        {erValgt && (
+                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(58,74,90,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--pr)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700 }}>✓</div>
                           </div>
+                        )}
 
-                          {/* TAG */}
-                          {editTag === u.id ? (
-                            <div onClick={e => e.stopPropagation()}>
-                              <select
-                                autoFocus
-                                value={u.bruger_tag || ''}
-                                onChange={e => setTag(u.id, e.target.value)}
-                                onBlur={() => setEditTag(null)}
-                                style={{ width: '100%', padding: '4px 6px', borderRadius: 6, border: '1.5px solid var(--pr)', fontSize: 11, fontFamily: 'inherit' }}>
-                                <option value="">— Vælg tag —</option>
-                                {TAGS.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
-                            </div>
-                          ) : (
-                            <div
-                              onClick={e => { e.stopPropagation(); setEditTag(u.id) }}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 20, background: u.bruger_tag ? tagColor(u.bruger_tag) : '#e8edf1', color: u.bruger_tag ? '#fff' : 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', maxWidth: '100%' }}>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {u.bruger_tag || '+ Tilføj tag'}
-                              </span>
-                              <span style={{ opacity: .7, fontSize: 10 }}>✎</span>
-                            </div>
-                          )}
+                        {/* ÅBEN KNAP */}
+                        <div onClick={e => { e.stopPropagation(); openFile(u) }}
+                          style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.5)', color: '#fff', borderRadius: 6, padding: '3px 7px', fontSize: 11, cursor: 'pointer' }}>
+                          ↗
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
+
+                      {/* FILNAVN + TAG */}
+                      <div style={{ padding: '8px 8px 6px' }}>
+                        <div style={{ fontSize: 11, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6, color: 'var(--tx)' }} title={u.filnavn}>
+                          {u.filnavn}
+                        </div>
+
+                        {/* TAG */}
+                        {editTag === u.id ? (
+                          <div onClick={e => e.stopPropagation()}>
+                            <select
+                              autoFocus
+                              value={u.bruger_tag || ''}
+                              onChange={e => setTag(u.id, e.target.value)}
+                              onBlur={() => setEditTag(null)}
+                              style={{ width: '100%', padding: '4px 6px', borderRadius: 6, border: '1.5px solid var(--pr)', fontSize: 11, fontFamily: 'inherit' }}>
+                              <option value="">— Vælg tag —</option>
+                              {TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                        ) : (
+                          <div
+                            onClick={e => { e.stopPropagation(); setEditTag(u.id) }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 20, background: u.bruger_tag ? tagColor(u.bruger_tag) : '#e8edf1', color: u.bruger_tag ? '#fff' : 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', maxWidth: '100%' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {u.bruger_tag || '+ Tilføj tag'}
+                            </span>
+                            <span style={{ opacity: .7, fontSize: 10 }}>✎</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            )
-          })}
+            </div>
+          ))}
         </>
       )}
 
