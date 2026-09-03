@@ -15,11 +15,24 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
   const [fileProgress, setFileProgress] = useState({})
   const [valgte, setValgte] = useState(new Set())
   const [thumbnails, setThumbnails] = useState({})
-  const [editTag, setEditTag] = useState(null) // id of upload being tagged
+  const [editTag, setEditTag] = useState(null)
   const [sending, setSending] = useState(false)
+  const [showBulkTag, setShowBulkTag] = useState(false)
   const fileInputRef = useRef()
+  const bulkTagRef = useRef()
 
   useEffect(() => { fetchUploads() }, [sagId])
+
+  // Luk bulk tag dropdown når man klikker udenfor
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (bulkTagRef.current && !bulkTagRef.current.contains(e.target)) {
+        setShowBulkTag(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   async function fetchUploads() {
     const { data } = await supabase
@@ -45,8 +58,6 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
   async function uploadFiles(files) {
     if (!files?.length) return
     setUploading(true)
-    const sagNavn = sagAdresse?.replace(/[^a-zA-Z0-9æøåÆØÅ]/g, '_').trim() || sagId
-
     for (const file of Array.from(files)) {
       setFileProgress(p => ({ ...p, [file.name]: 1 }))
       try {
@@ -80,13 +91,23 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
     toast?.(`✓ Tag sat: ${tag}`)
   }
 
+  async function setBulkTagOnValgte(tag) {
+    if (!tag) return
+    const ids = Array.from(valgte)
+    setShowBulkTag(false)
+    await supabase.from('uploads').update({ bruger_tag: tag }).in('id', ids)
+    setUploads(prev => prev.map(u => ids.includes(u.id) ? { ...u, bruger_tag: tag } : u))
+    setValgte(new Set())
+    toast?.(`✓ Tag "${tag}" sat på ${ids.length} billede${ids.length !== 1 ? 'r' : ''}`)
+  }
+
   async function openFile(upload) {
     const { data } = await supabase.storage.from('sager').createSignedUrl(upload.dropbox_path, 3600)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
   async function sletValgte() {
-    if (!confirm(`Slet ${valgte.size} fil(er) permanent?`)) return
+    if (!confirm(`Er du sikker på at du vil slette ${valgte.size} fil(er) permanent? Dette kan ikke fortrydes.`)) return
     const valgteUploads = uploads.filter(u => valgte.has(u.id))
     const paths = valgteUploads.map(u => u.dropbox_path)
     await supabase.storage.from('sager').remove(paths)
@@ -135,7 +156,6 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
     setValgte(alleValgt ? new Set() : new Set(uploads.map(u => u.id)))
   }
 
-  // Gruppér uploads efter tag
   const grouped = {}
   uploads.forEach(u => {
     const tag = u.bruger_tag || '— Ikke tagget'
@@ -198,13 +218,46 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--pr)', padding: '3px 10px', background: '#eef4f8', borderRadius: 20 }}>
                   {valgte.size} valgt
                 </div>
+
+                {/* BULK TAG */}
+                <div ref={bulkTagRef} style={{ position: 'relative' }}>
+                  <button
+                    onClick={e => { e.stopPropagation(); setShowBulkTag(v => !v) }}
+                    className="btn btn-sm"
+                    style={{ background: '#f59e0b', color: '#fff', fontSize: 12 }}>
+                    🏷 Tag valgte
+                  </button>
+                  {showBulkTag && (
+                    <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#fff', border: '1px solid var(--brd)', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.15)', padding: 8, minWidth: 180 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', padding: '4px 8px 8px' }}>
+                        Sæt tag på {valgte.size} billede{valgte.size !== 1 ? 'r' : ''}
+                      </div>
+                      {TAGS.map(t => (
+                        <div
+                          key={t}
+                          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setBulkTagOnValgte(t) }}
+                          style={{ padding: '7px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f0f4f8'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: tagColor(t), flexShrink: 0 }} />
+                          {t}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <button onClick={uploadTilMindworking} disabled={sending} className="btn btn-sm"
                   style={{ background: '#1a5c43', color: '#fff', fontSize: 12 }}>
                   {sending ? '⏳ Sender...' : `⚡ Upload ${valgte.size} til Mindworking`}
                 </button>
-                <button onClick={sletValgte} className="btn btn-red btn-sm" style={{ fontSize: 12 }}>
-                  🗑 Slet valgte
-                </button>
+
+                {/* SLET — adskilt med mellemrum */}
+                <div style={{ marginLeft: 8 }}>
+                  <button onClick={sletValgte} className="btn btn-red btn-sm" style={{ fontSize: 12 }}>
+                    🗑 Slet valgte
+                  </button>
+                </div>
               </>
             ) : (
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>Klik på billeder for at vælge dem</div>
@@ -229,7 +282,6 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
                 {items.map(u => {
                   const erValgt = valgte.has(u.id)
                   const thumbnail = thumbnails[u.id]
-                  const erBillede = u.type === 'billede' || /\.(jpg|jpeg|png|gif|webp)$/i.test(u.filnavn)
 
                   return (
                     <div key={u.id} style={{ borderRadius: 10, overflow: 'hidden', border: erValgt ? '3px solid var(--pr)' : '3px solid transparent', background: 'var(--bg)', boxShadow: erValgt ? '0 0 0 1px var(--pr)' : '0 1px 4px rgba(0,0,0,.08)', transition: 'all .15s' }}>
