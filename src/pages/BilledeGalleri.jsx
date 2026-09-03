@@ -15,9 +15,8 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
   const [fileProgress, setFileProgress] = useState({})
   const [valgte, setValgte] = useState(new Set())
   const [thumbnails, setThumbnails] = useState({})
-  const [editTag, setEditTag] = useState(null)
+  const [editTag, setEditTag] = useState(null) // id of upload being tagged
   const [sending, setSending] = useState(false)
-  const [showBulkTag, setShowBulkTag] = useState(false)
   const fileInputRef = useRef()
 
   useEffect(() => { fetchUploads() }, [sagId])
@@ -79,17 +78,6 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
     setUploads(u => u.map(x => x.id === uploadId ? { ...x, bruger_tag: tag } : x))
     setEditTag(null)
     toast?.(`✓ Tag sat: ${tag}`)
-  }
-
-  // Bulk tag — opdater state direkte uden at genindlæse
-  async function setBulkTagOnValgte(tag) {
-    if (!tag) return
-    const ids = Array.from(valgte)
-    await supabase.from('uploads').update({ bruger_tag: tag }).in('id', ids)
-    setUploads(prev => prev.map(u => ids.includes(u.id) ? { ...u, bruger_tag: tag } : u))
-    setShowBulkTag(false)
-    setValgte(new Set())
-    toast?.(`✓ Tag "${tag}" sat på ${ids.length} billede${ids.length !== 1 ? 'r' : ''}`)
   }
 
   async function openFile(upload) {
@@ -210,37 +198,6 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--pr)', padding: '3px 10px', background: '#eef4f8', borderRadius: 20 }}>
                   {valgte.size} valgt
                 </div>
-
-                {/* BULK TAG KNAP */}
-                <div style={{ position: 'relative' }}>
-                  <button
-                    onClick={e => { e.stopPropagation(); setShowBulkTag(v => !v) }}
-                    className="btn btn-sm"
-                    style={{ background: '#f59e0b', color: '#fff', fontSize: 12 }}>
-                    🏷 Tag valgte
-                  </button>
-                  {showBulkTag && (
-                    <div
-                      onClick={e => e.stopPropagation()}
-                      style={{ position: 'absolute', top: '110%', left: 0, zIndex: 100, background: '#fff', border: '1px solid var(--brd)', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.12)', padding: 8, minWidth: 180 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', padding: '4px 8px 8px' }}>
-                        Sæt tag på {valgte.size} billede{valgte.size !== 1 ? 'r' : ''}
-                      </div>
-                      {TAGS.map(t => (
-                        <div
-                          key={t}
-                          onClick={e => { e.stopPropagation(); setBulkTagOnValgte(t) }}
-                          style={{ padding: '7px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#f0f4f8'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: tagColor(t), flexShrink: 0 }} />
-                          {t}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
                 <button onClick={uploadTilMindworking} disabled={sending} className="btn btn-sm"
                   style={{ background: '#1a5c43', color: '#fff', fontSize: 12 }}>
                   {sending ? '⏳ Sender...' : `⚡ Upload ${valgte.size} til Mindworking`}
@@ -272,11 +229,10 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
                 {items.map(u => {
                   const erValgt = valgte.has(u.id)
                   const thumbnail = thumbnails[u.id]
+                  const erBillede = u.type === 'billede' || /\.(jpg|jpeg|png|gif|webp)$/i.test(u.filnavn)
 
                   return (
                     <div key={u.id} style={{ borderRadius: 10, overflow: 'hidden', border: erValgt ? '3px solid var(--pr)' : '3px solid transparent', background: 'var(--bg)', boxShadow: erValgt ? '0 0 0 1px var(--pr)' : '0 1px 4px rgba(0,0,0,.08)', transition: 'all .15s' }}>
-
-                      {/* BILLEDE */}
                       <div
                         onClick={() => toggleValgt(u.id)}
                         style={{ position: 'relative', width: '100%', paddingBottom: '80%', background: '#dde3e8', cursor: 'pointer' }}>
@@ -289,28 +245,20 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
                             <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>{u.filnavn?.split('.').pop()}</div>
                           </div>
                         )}
-
-                        {/* VALGT OVERLAY */}
                         {erValgt && (
                           <div style={{ position: 'absolute', inset: 0, background: 'rgba(58,74,90,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--pr)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700 }}>✓</div>
                           </div>
                         )}
-
-                        {/* ÅBEN KNAP */}
                         <div onClick={e => { e.stopPropagation(); openFile(u) }}
                           style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.5)', color: '#fff', borderRadius: 6, padding: '3px 7px', fontSize: 11, cursor: 'pointer' }}>
                           ↗
                         </div>
                       </div>
-
-                      {/* FILNAVN + TAG */}
                       <div style={{ padding: '8px 8px 6px' }}>
                         <div style={{ fontSize: 11, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6, color: 'var(--tx)' }} title={u.filnavn}>
                           {u.filnavn}
                         </div>
-
-                        {/* TAG */}
                         {editTag === u.id ? (
                           <div onClick={e => e.stopPropagation()}>
                             <select
