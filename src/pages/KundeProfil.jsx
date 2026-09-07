@@ -11,10 +11,20 @@ export default function KundeProfil() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [saving, setSaving] = useState(false)
+  const [mwForm, setMwForm] = useState({ mindworking_endpoint: '', mindworking_token_url: '', mindworking_secret: '' })
+  const [savingMw, setSavingMw] = useState(false)
   const { toasts, toast } = useToast()
 
   useEffect(() => {
-    supabase.from('kunder').select('*').eq('id', id).single().then(({ data }) => { setKunde(data); setForm(data || {}) })
+    supabase.from('kunder').select('*').eq('id', id).single().then(({ data }) => {
+      setKunde(data)
+      setForm(data || {})
+      setMwForm({
+        mindworking_endpoint: data?.mindworking_endpoint || '',
+        mindworking_token_url: data?.mindworking_token_url || '',
+        mindworking_secret: data?.mindworking_secret || ''
+      })
+    })
     supabase.from('sager').select('id, adresse, dato, status').eq('kunde_id', id).order('dato', { ascending: false }).then(({ data }) => setSager(data || []))
   }, [id])
 
@@ -29,6 +39,18 @@ export default function KundeProfil() {
     toast('✓ Kunde opdateret')
   }
 
+  async function handleSaveMw() {
+    setSavingMw(true)
+    await supabase.from('kunder').update({
+      mindworking_endpoint: mwForm.mindworking_endpoint || null,
+      mindworking_token_url: mwForm.mindworking_token_url || null,
+      mindworking_secret: mwForm.mindworking_secret || null
+    }).eq('id', id)
+    setSavingMw(false)
+    supabase.from('kunder').select('*').eq('id', id).single().then(({ data }) => setKunde(data))
+    toast('✓ Mindworking indstillinger gemt')
+  }
+
   async function handleDelete() {
     if (!confirm('Slet kunden? Dette kan ikke fortrydes.')) return
     await supabase.from('kunder').delete().eq('id', id)
@@ -39,6 +61,8 @@ export default function KundeProfil() {
 
   const statusLabel = s => ({ ny: 'Ny', aktiv: 'Aktiv', afventer: 'Afventer', afsluttet: 'Afsluttet', leveret: 'Leveret' }[s] || 'Ny')
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', ny: 'new', afsluttet: 'done', leveret: 'leveret' }[s] || 'new')
+
+  const mwKonfigureret = kunde.mindworking_endpoint && kunde.mindworking_token_url && kunde.mindworking_secret
 
   return (
     <div>
@@ -73,27 +97,78 @@ export default function KundeProfil() {
           </div>
         )}
       </div>
+
       <div className="grid2">
-        <div className="card">
-          <div className="section-hd">Sager ({sager.length})</div>
-          {sager.length === 0 ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>Ingen sager endnu</div>
-            : sager.map(s => (
-              <div key={s.id} onClick={() => navigate(`/sager/${s.id}`)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '.5px solid var(--brd)', cursor: 'pointer' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{s.adresse}</div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{s.dato ? new Date(s.dato).toLocaleDateString('da-DK') : '—'}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="card">
+            <div className="section-hd">Sager ({sager.length})</div>
+            {sager.length === 0 ? <div style={{ color: 'var(--muted)', fontSize: 13 }}>Ingen sager endnu</div>
+              : sager.map(s => (
+                <div key={s.id} onClick={() => navigate(`/sager/${s.id}`)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '.5px solid var(--brd)', cursor: 'pointer' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, fontSize: 13 }}>{s.adresse}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{s.dato ? new Date(s.dato).toLocaleDateString('da-DK') : '—'}</div>
+                  </div>
+                  <span className={`badge badge-${badgeClass(s.status)}`}>{statusLabel(s.status)}</span>
                 </div>
-                <span className={`badge badge-${badgeClass(s.status)}`}>{statusLabel(s.status)}</span>
-              </div>
-            ))
-          }
-        </div>
-        <div className="card">
-          <div className="section-hd">Noter</div>
-          <div style={{ fontSize: 13, color: kunde.noter ? 'var(--txt)' : 'var(--muted)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-            {kunde.noter || 'Ingen noter. Klik Rediger for at tilføje.'}
+              ))
+            }
           </div>
+
+          <div className="card">
+            <div className="section-hd">Noter</div>
+            <div style={{ fontSize: 13, color: kunde.noter ? 'var(--txt)' : 'var(--muted)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+              {kunde.noter || 'Ingen noter. Klik Rediger for at tilføje.'}
+            </div>
+          </div>
+        </div>
+
+        {/* MINDWORKING INDSTILLINGER */}
+        <div className="card">
+          <div className="section-hd">Mindworking</div>
+
+          {mwKonfigureret && (
+            <div className="ok-box" style={{ marginBottom: 14 }}>✓ Mindworking er konfigureret</div>
+          )}
+
+          <div className="form-group">
+            <label>API Endpoint</label>
+            <input
+              value={mwForm.mindworking_endpoint}
+              onChange={e => setMwForm(f => ({ ...f, mindworking_endpoint: e.target.value }))}
+              placeholder="https://home.mindworking.eu/api/integrations/media/graphql/"
+            />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+              F.eks. nybolig.mindworking.eu eller home.mindworking.eu
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Token URL</label>
+            <input
+              value={mwForm.mindworking_token_url}
+              onChange={e => setMwForm(f => ({ ...f, mindworking_token_url: e.target.value }))}
+              placeholder="https://iam.mindworking.eu/auth/realms/home/protocol/openid-connect/token"
+            />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+              F.eks. .../realms/nybolig/... eller .../realms/home/...
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Client Secret</label>
+            <input
+              type="password"
+              value={mwForm.mindworking_secret}
+              onChange={e => setMwForm(f => ({ ...f, mindworking_secret: e.target.value }))}
+              placeholder="Din Mindworking client secret"
+            />
+          </div>
+
+          <button className="btn btn-primary btn-sm" onClick={handleSaveMw} disabled={savingMw}>
+            {savingMw ? 'Gemmer...' : '💾 Gem Mindworking indstillinger'}
+          </button>
         </div>
       </div>
     </div>
