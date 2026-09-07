@@ -1,0 +1,152 @@
+export const config = {
+  api: { bodyParser: false, maxDuration: 300 }
+}
+
+const MW_CLIENT_ID = process.env.MW_CLIENT_ID
+const MW_SECRET = process.env.MW_SECRET
+
+// Standard Nybolig endpoints som fallback
+const DEFAULT_ENDPOINT = 'https://nybolig.mindworking.eu/api/integrations/media/graphql/'
+const DEFAULT_TOKEN_URL = 'https://iam.mindworking.eu/auth/realms/nybolig/protocol/openid-connect/token'
+
+async function getToken(tokenUrl, secret) {
+  const clientSecret = secret || MW_SECRET
+  const basicAuth = Buffer.from(`${MW_CLIENT_ID}:${clientSecret}`).toString('base64')
+  const r = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Basic ${basicAuth}` },
+    body: new URLSearchParams({ grant_type: 'client_credentials' })
+  })
+  const text = await r.text()
+  let d
+  try { d = JSON.parse(text) } catch (e) { throw new Error('Token svar ikke JSON: ' + text.slice(0, 200)) }
+  if (!d.access_token) throw new Error('Ingen token: ' + JSON.stringify(d))
+  console.log('Token type:', d.token_type, '| scope:', d.scope)
+  return d.access_token
+}
+
+async function gql(token, endpoint, query, variables = {}) {
+  const r = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+    body: JSON.stringify({ query, variables })
+  })
+  console.log('GraphQL status:', r.status)
+  const text = await r.text()
+  console.log('GraphQL svar:', text.slice(0, 150))
+  let d
+  try { d = JSON.parse(text) } catch (e) { throw new Error('GraphQL svar ikke JSON: ' + text.slice(0, 200)) }
+  if (d.errors) throw new Error(d.errors[0].message)
+  return d.data
+}
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') return res.status(200).end()
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  const body = await new Promise((resolve, reject) => {
+    let data = ''
+    req.on('data', chunk => data += chunk)
+    req.on('end', () => { try { resolve(JSON.parse(data)) } catch(e) { reject(e) } })
+    req.on('error', reject)
+  })
+  const { action, caseNo, billeder, shopNo, mw_endpoint, mw_token_url, mw_secret } = body
+
+  // Brug kundens endpoint hvis tilgængeligt, ellers fallback til Nybolig
+  const endpoint = mw_endpoint || DEFAULT_ENDPOINT
+  const tokenUrl = mw_token_url || DEFAULT_TOKEN_URL
+  const secret = mw_secret || null
+
+  try {
+    const token = await getToken(tokenUrl, secret)
+
+    if (action === 'test') {
+      const data = await gql(token, endpoint, `query { viewer { shopByShopNo(shopNo: "N260142") { id } } }`)
+      return res.status(200).json({ success: true, shopId: data.viewer.shopByShopNo.id })
+    }
+
+    if (action === 'upload_billeder') {
+      if (!caseNo || !billeder?.length) return res.status(400).json({ error: 'Mangler caseNo eller billeder' })
+
+      const kundeShopNo = shopNo || 'N260142'
+      console.log('Søger sag:', caseNo, '| shopNo:', kundeShopNo, '| endpoint:', endpoint)
+
+      const caseData = await gql(token, endpoint, `
+        query GetCase($shopNo: String!, $caseNo: String!) {
+          viewer { caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) { id } }
+        }`, { shopNo: kundeShopNo, caseNo })
+
+      const caseId = caseData.viewer.caseByCaseNo?.id
+      if (!caseId) return res.status(404).json({ error: `Sag ${caseNo} ikke fundet` })
+      console.log('CaseId:', caseId)
+
+      const resultater = []
+      const sorterede = [...billeder].sort((a, b) => (a.tag || 'Andet').localeCompare(b.tag || 'Andet'))
+
+      async function uploadBillede(billede) {
+        try {
+          console.log('Henter fil:', billede.navn)
+          const fileResponse = await fetch(billede.url)
+          if (!fileResponse.ok) return { navn: billede.navn, success: false, error: 'Hentning fejlede' }
+          const fileBlob = await fileResponse.blob()
+          console.log('Filstørrelse:', fileBlob.size, 'bytes')
+
+          const queryStr = JSON.stringify({
+            query: `mutation uploadCaseMedia { createMedia(input: {
+              caseId: "${caseId}",
+              description: "${billede.beskrivelse || ''}",
+              mediaType: "image/jpg",
+              published: true,
+              tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
+            }) { id fileName published tags resourceUrl } }`
+          })
+
+          const mfData = new FormData()
+          mfData.append('query', queryStr)
+          mfData.append('map', JSON.stringify({ "0": ["variables.input.file"] }))
+          mfData.append('0', fileBlob, billede.navn)
+
+          console.log('Sender multipart til Mindworking:', billede.navn)
+          const mfR = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: mfData
+          })
+          console.log('Multipart status:', mfR.status, billede.navn)
+          const mfText = await mfR.text()
+          console.log('Multipart svar:', mfText.slice(0, 300))
+
+          let mfJson
+          try { mfJson = JSON.parse(mfText) } catch {}
+
+          if (mfJson?.data?.createMedia?.id) {
+            return { navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id }
+          }
+
+          return { navn: billede.navn, success: false, error: mfText.slice(0, 200) }
+
+        } catch (e) {
+          return { navn: billede.navn, success: false, error: e.message }
+        }
+      }
+
+      const BATCH_SIZE = 5
+      for (let i = 0; i < sorterede.length; i += BATCH_SIZE) {
+        const batch = sorterede.slice(i, i + BATCH_SIZE)
+        console.log(`Uploader batch ${Math.floor(i/BATCH_SIZE) + 1} (${batch.length} billeder)`)
+        const batchResultater = await Promise.all(batch.map(b => uploadBillede(b)))
+        resultater.push(...batchResultater)
+      }
+
+      return res.status(200).json({ success: true, resultater, total: resultater.length, uploadet: resultater.filter(r => r.success).length })
+    }
+
+    res.status(400).json({ error: 'Ukendt action' })
+  } catch (e) {
+    console.error('Mindworking fejl:', e)
+    res.status(500).json({ error: e.message })
+  }
+}

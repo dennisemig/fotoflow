@@ -9,7 +9,7 @@ const TAGS = [
   'Udsigt', 'Værelse'
 ]
 
-export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
+export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, mwEndpoint, mwTokenUrl, mwSecret, mwShopNo, toast }) {
   const [uploads, setUploads] = useState([])
   const [uploading, setUploading] = useState(false)
   const [fileProgress, setFileProgress] = useState({})
@@ -133,7 +133,15 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, toast }) {
       const r = await fetch('/api/mindworking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upload_billeder', caseNo: mwNummer, billeder })
+        body: JSON.stringify({
+          action: 'upload_billeder',
+          caseNo: mwNummer,
+          billeder,
+          shopNo: mwShopNo || null,
+          mw_endpoint: mwEndpoint || null,
+          mw_token_url: mwTokenUrl || null,
+          mw_secret: mwSecret || null
+        })
       })
       const result = await r.json()
       if (result.success) {
