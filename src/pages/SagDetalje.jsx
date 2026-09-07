@@ -63,21 +63,14 @@ export default function SagDetalje() {
 
   async function leverSag() {
     if (!confirm('Marker sagen som leveret og send gallerilink til mægler?')) return
-
-    // Generer unikt token
     const token = crypto.randomUUID()
     const udloeber = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     const galleriLink = `${window.location.origin}/levering/${token}`
-
     await supabase.from('sager').update({ status: 'leveret', levering_token: token, levering_udloeber: udloeber }).eq('id', id)
     setSag(s => ({ ...s, status: 'leveret', levering_token: token }))
-
-    // Tæl billeder
     const { count } = await supabase.from('uploads').select('*', { count: 'exact', head: true }).eq('sag_id', id)
-
     const modtager = sag.maegler_email || kunde?.email
     const navn = sag.maegler_navn || kunde?.navn
-
     if (modtager) {
       await fetch('/api/send-notification', {
         method: 'POST',
@@ -338,6 +331,10 @@ export default function SagDetalje() {
               sagId={id}
               sagAdresse={sag?.adresse}
               mwNummer={sag?.maegler_sagsnummer}
+              mwEndpoint={kunde?.mindworking_endpoint}
+              mwTokenUrl={kunde?.mindworking_token_url}
+              mwSecret={kunde?.mindworking_secret}
+              mwShopNo={kunde?.mindworking_shopno}
               toast={toast}
             />
           </div>
