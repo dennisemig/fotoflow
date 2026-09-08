@@ -2,13 +2,17 @@ export const config = {
   api: { bodyParser: false, maxDuration: 300 }
 }
 
-const MW_ENDPOINT = 'https://nybolig.mindworking.eu/api/integrations/media/graphql/'
 const MW_CLIENT_ID = process.env.MW_CLIENT_ID
 const MW_SECRET = process.env.MW_SECRET
 
-async function getToken() {
-  const basicAuth = Buffer.from(`${MW_CLIENT_ID}:${MW_SECRET}`).toString('base64')
-  const r = await fetch('https://iam.mindworking.eu/auth/realms/nybolig/protocol/openid-connect/token', {
+// Standard Nybolig endpoints som fallback
+const DEFAULT_ENDPOINT = 'https://nybolig.mindworking.eu/api/integrations/media/graphql/'
+const DEFAULT_TOKEN_URL = 'https://iam.mindworking.eu/auth/realms/nybolig/protocol/openid-connect/token'
+
+async function getToken(tokenUrl, secret) {
+  const clientSecret = secret || MW_SECRET
+  const basicAuth = Buffer.from(`${MW_CLIENT_ID}:${clientSecret}`).toString('base64')
+  const r = await fetch(tokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Basic ${basicAuth}` },
     body: new URLSearchParams({ grant_type: 'client_credentials' })
@@ -21,8 +25,8 @@ async function getToken() {
   return d.access_token
 }
 
-async function gql(token, query, variables = {}) {
-  const r = await fetch(MW_ENDPOINT, {
+async function gql(token, endpoint, query, variables = {}) {
+  const r = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
     body: JSON.stringify({ query, variables })
@@ -43,68 +47,45 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { action, caseNo, billeder } = await new Promise((resolve, reject) => {
+  const body = await new Promise((resolve, reject) => {
     let data = ''
     req.on('data', chunk => data += chunk)
     req.on('end', () => { try { resolve(JSON.parse(data)) } catch(e) { reject(e) } })
     req.on('error', reject)
   })
+  const { action, caseNo, billeder, shopNo, mw_endpoint, mw_token_url, mw_secret } = body
+
+  // Brug kundens endpoint hvis tilgængeligt, ellers fallback til Nybolig
+  const endpoint = mw_endpoint || DEFAULT_ENDPOINT
+  const tokenUrl = mw_token_url || DEFAULT_TOKEN_URL
+  const secret = mw_secret || null
 
   try {
-    const token = await getToken()
+    const token = await getToken(tokenUrl, secret)
 
     if (action === 'test') {
-      const data = await gql(token, `query { viewer { shopByShopNo(shopNo: "N260142") { id } } }`)
+      const data = await gql(token, endpoint, `query { viewer { shopByShopNo(shopNo: "N260142") { id } } }`)
       return res.status(200).json({ success: true, shopId: data.viewer.shopByShopNo.id })
-    }
-
-    if (action === 'get_case') {
-      if (!caseNo) return res.status(400).json({ error: 'Mangler caseNo' })
-      console.log('Henter sag:', caseNo)
-      const data = await gql(token, `
-        query GetCase($shopNo: String!, $caseNo: String!) {
-          viewer {
-            caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) {
-              id
-              caseNo
-              liebhaveri
-              address
-              media {
-                items {
-                  id
-                  fileName
-                  resourceUrl
-                  published
-                  description
-                  mediaType
-                  tags
-                }
-              }
-            }
-          }
-        }
-      `, { shopNo: 'N260142', caseNo })
-      return res.status(200).json({ success: true, case: data.viewer.caseByCaseNo })
     }
 
     if (action === 'upload_billeder') {
       if (!caseNo || !billeder?.length) return res.status(400).json({ error: 'Mangler caseNo eller billeder' })
 
-      console.log('Søger sag:', caseNo)
-      const caseData = await gql(token, `
+      const kundeShopNo = shopNo || 'N260142'
+      console.log('Søger sag:', caseNo, '| shopNo:', kundeShopNo, '| endpoint:', endpoint)
+
+      const caseData = await gql(token, endpoint, `
         query GetCase($shopNo: String!, $caseNo: String!) {
           viewer { caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) { id } }
-        }`, { shopNo: 'N260142', caseNo })
+        }`, { shopNo: kundeShopNo, caseNo })
 
       const caseId = caseData.viewer.caseByCaseNo?.id
       if (!caseId) return res.status(404).json({ error: `Sag ${caseNo} ikke fundet` })
       console.log('CaseId:', caseId)
 
       const resultater = []
-      let position = 1
       const sorterede = [...billeder].sort((a, b) => (a.tag || 'Andet').localeCompare(b.tag || 'Andet'))
 
-      // Upload ét billede — returnerer result-objekt
       async function uploadBillede(billede) {
         try {
           console.log('Henter fil:', billede.navn)
@@ -113,16 +94,11 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
-          // Sæt mediaType automatisk baseret på tag
-          const erPlantegning = billede.tag && billede.tag.toLowerCase().includes('plantegning')
-          const mediaType = erPlantegning ? 'Plantegning' : 'Billede'
-
-          // Matcher Mindworking HAR-format: felt hedder 'query' (ikke 'operations')
           const queryStr = JSON.stringify({
             query: `mutation uploadCaseMedia { createMedia(input: {
               caseId: "${caseId}",
               description: "${billede.beskrivelse || ''}",
-              mediaType: "${mediaType}",
+              mediaType: "image/jpg",
               published: true,
               tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
             }) { id fileName published tags resourceUrl } }`
@@ -134,7 +110,7 @@ export default async function handler(req, res) {
           mfData.append('0', fileBlob, billede.navn)
 
           console.log('Sender multipart til Mindworking:', billede.navn)
-          const mfR = await fetch(MW_ENDPOINT, {
+          const mfR = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: mfData
@@ -157,7 +133,6 @@ export default async function handler(req, res) {
         }
       }
 
-      // Upload i batches af 5 parallelt for at undgå timeout
       const BATCH_SIZE = 5
       for (let i = 0; i < sorterede.length; i += BATCH_SIZE) {
         const batch = sorterede.slice(i, i + BATCH_SIZE)
