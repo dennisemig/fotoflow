@@ -258,7 +258,17 @@ function OpretSagModal({ onClose, onSaved, toast }) {
           <div></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="form-group"><label>Fra</label><input type="time" value={form.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+          <div className="form-group"><label>Fra</label><input type="time" value={form.tidspunkt} onChange={e => {
+            const fra = e.target.value
+            set('tidspunkt', fra)
+            if (fra) {
+              const [h, m] = fra.split(':').map(Number)
+              const total = h * 60 + m + 90
+              const tilH = String(Math.floor(total / 60) % 24).padStart(2, '0')
+              const tilM = String(total % 60).padStart(2, '0')
+              set('tidspunkt_slut', `${tilH}:${tilM}`)
+            }
+          }} /></div>
           <div className="form-group"><label>Til</label><input type="time" value={form.tidspunkt_slut} onChange={e => set('tidspunkt_slut', e.target.value)} /></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
