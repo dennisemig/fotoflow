@@ -32,6 +32,7 @@ export default function Sager() {
   const [sager, setSager] = useState([])
   const [search, setSearch] = useState('')
   const [datoFilter, setDatoFilter] = useState('')
+  const [maanedFilter, setMaanedFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const navigate = useNavigate()
@@ -73,7 +74,8 @@ export default function Sager() {
       (s.maegler_navn || '').toLowerCase().includes(search.toLowerCase()) ||
       (s.adresse || '').toLowerCase().includes(search.toLowerCase())
     const datoMatch = !datoFilter || s.dato === datoFilter
-    return søgMatch && datoMatch
+    const maanedMatch = !maanedFilter || (s.dato && s.dato.startsWith(maanedFilter))
+    return søgMatch && datoMatch && maanedMatch
   })
 
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', leveret: 'leveret', ny: 'new', afsluttet: 'done' }[s] || 'new')
@@ -86,14 +88,21 @@ export default function Sager() {
       <div className="toolbar">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Søg på kunde, mægler eller adresse..." />
         <input
+          type="month"
+          value={maanedFilter}
+          onChange={e => { setMaanedFilter(e.target.value); setDatoFilter('') }}
+          style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--brd)', fontSize: 13, fontFamily: 'inherit' }}
+          title="Filtrer på måned"
+        />
+        <input
           type="date"
           value={datoFilter}
-          onChange={e => setDatoFilter(e.target.value)}
+          onChange={e => { setDatoFilter(e.target.value); setMaanedFilter('') }}
           style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--brd)', fontSize: 13, fontFamily: 'inherit' }}
-          title="Filtrer på dato"
+          title="Filtrer på specifik dag"
         />
-        {datoFilter && (
-          <button className="btn btn-outline btn-sm" onClick={() => setDatoFilter('')}>✕ Ryd dato</button>
+        {(datoFilter || maanedFilter) && (
+          <button className="btn btn-outline btn-sm" onClick={() => { setDatoFilter(''); setMaanedFilter('') }}>✕ Ryd filter</button>
         )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Opret sag</button>
       </div>
