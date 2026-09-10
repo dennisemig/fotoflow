@@ -22,7 +22,7 @@ async function beregnKm(fraAdresse, tilAdresse) {
     const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${fra.lng},${fra.lat};${til.lng},${til.lat}?overview=false`)
     const d = await r.json()
     if (d.code === 'Ok' && d.routes.length > 0) {
-      return Math.round(d.routes[0].distance / 1000 * 10) / 10 // km med 1 decimal
+      return Math.round(d.routes[0].distance / 1000 * 10) / 10
     }
   } catch (e) {}
   return null
@@ -31,6 +31,7 @@ async function beregnKm(fraAdresse, tilAdresse) {
 export default function Sager() {
   const [sager, setSager] = useState([])
   const [search, setSearch] = useState('')
+  const [datoFilter, setDatoFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const navigate = useNavigate()
@@ -43,7 +44,7 @@ export default function Sager() {
     const { data: sagerData, error } = await supabase
       .from('sager')
       .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer')
-      .order('created_at', { ascending: false })
+      .order('dato', { ascending: false })
 
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
     if (!sagerData || sagerData.length === 0) { setSager([]); setLoading(false); return }
@@ -66,11 +67,14 @@ export default function Sager() {
     setLoading(false)
   }
 
-  const filtered = sager.filter(s =>
-    (s.kunde?.navn || '').toLowerCase().includes(search.toLowerCase()) ||
-    (s.maegler_navn || '').toLowerCase().includes(search.toLowerCase()) ||
-    (s.adresse || '').toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = sager.filter(s => {
+    const søgMatch = !search ||
+      (s.kunde?.navn || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.maegler_navn || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.adresse || '').toLowerCase().includes(search.toLowerCase())
+    const datoMatch = !datoFilter || s.dato === datoFilter
+    return søgMatch && datoMatch
+  })
 
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', leveret: 'leveret', ny: 'new', afsluttet: 'done' }[s] || 'new')
   const statusLabel = s => ({ ny: 'Ny', aktiv: 'Aktiv', afventer: 'Afventer', afsluttet: 'Afsluttet', leveret: 'Leveret' }[s] || 'Ny')
@@ -81,13 +85,23 @@ export default function Sager() {
       <div className="page-title">Sager</div>
       <div className="toolbar">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Søg på kunde, mægler eller adresse..." />
+        <input
+          type="date"
+          value={datoFilter}
+          onChange={e => setDatoFilter(e.target.value)}
+          style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--brd)', fontSize: 13, fontFamily: 'inherit' }}
+          title="Filtrer på dato"
+        />
+        {datoFilter && (
+          <button className="btn btn-outline btn-sm" onClick={() => setDatoFilter('')}>✕ Ryd dato</button>
+        )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Opret sag</button>
       </div>
       <div className="card">
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>Indlæser sager...</div>
         ) : filtered.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">📋</div>Ingen sager endnu – opret din første!</div>
+          <div className="empty-state"><div className="empty-icon">📋</div>Ingen sager fundet</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table>
@@ -138,7 +152,6 @@ function OpretSagModal({ onClose, onSaved, toast }) {
   useEffect(() => {
     supabase.from('kunder').select('id, navn').order('navn').then(({ data }) => setKunder(data || []))
     supabase.from('freelancere').select('id, navn').eq('aktiv', true).then(({ data }) => setFreelancere(data || []))
-    // Hent startadresse fra profil
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
         const { data } = await supabase.from('profiles').select('startadresse').eq('id', user.id).single()
@@ -165,8 +178,6 @@ function OpretSagModal({ onClose, onSaved, toast }) {
         let grundareal = null, etager = null
         if (d3 && d3.length > 0) { grundareal = d3[0].byg041BebyggetAreal || null; etager = d3[0].byg054AntalEtager || null }
         setBbr({ adresseId, adgAdrId, boligareal, grundareal, etager })
-
-        // Beregn km hvis startadresse er sat
         if (startadresse) {
           const km = await beregnKm(startadresse, adresse)
           if (km) setKmInfo({ km, tur_retur: Math.round(km * 2 * 10) / 10 })
@@ -179,13 +190,10 @@ function OpretSagModal({ onClose, onSaved, toast }) {
   async function handleSave() {
     if (!form.adresse || !form.dato) { toast('Udfyld adresse og dato', 'error'); return }
     setSaving(true)
-
-    // Beregn km hvis ikke allerede gjort
     let km = kmInfo?.km || null
     if (!km && startadresse && form.adresse) {
       km = await beregnKm(startadresse, form.adresse)
     }
-
     const { error } = await supabase.from('sager').insert([{
       adresse: form.adresse,
       dato: form.dato,
