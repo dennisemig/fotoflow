@@ -94,11 +94,14 @@ export default async function handler(req, res) {
           const fileBlob = await fileResponse.blob()
           console.log('Filstørrelse:', fileBlob.size, 'bytes')
 
+          const erPlantegning = billede.tag && billede.tag.toLowerCase().includes('plantegning')
+          const mediaType = erPlantegning ? 'Plantegning' : 'Billede'
+
           const queryStr = JSON.stringify({
             query: `mutation uploadCaseMedia { createMedia(input: {
               caseId: "${caseId}",
               description: "${billede.beskrivelse || ''}",
-              mediaType: "image/jpg",
+              mediaType: "${mediaType}",
               published: true,
               tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
             }) { id fileName published tags resourceUrl } }`
