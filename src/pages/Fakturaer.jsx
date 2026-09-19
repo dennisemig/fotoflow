@@ -61,6 +61,15 @@ export default function Fakturaer() {
     toast(nyVærdi ? '✓ Markeret som faktureret' : '✓ Fakturering fjernet')
   }
 
+  function kopierAdresseliste() {
+    const adresser = filtered.map(s => s.adresse).filter(Boolean).join('\n')
+    navigator.clipboard.writeText(adresser).then(() => {
+      toast(`✓ ${filtered.length} adresse${filtered.length !== 1 ? 'r' : ''} kopieret til udklipsholder`)
+    }).catch(() => {
+      toast('Kunne ikke kopiere – prøv manuelt', 'error')
+    })
+  }
+
   const getFirma = s => s.maegler_firma || s.kunder?.navn || null
   const getNavn = s => s.maegler_navn || s.kunder?.navn || null
 
@@ -167,12 +176,23 @@ export default function Fakturaer() {
             )}
           </div>
 
-          {/* Total for valgt firma */}
+          {/* Total + adresseliste for valgt firma */}
           {valgtFirma && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--brd)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>{valgtFirma} — {filtered.length} sag{filtered.length !== 1 ? 'er' : ''} afventer</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--pr)' }}>
-                {visTotal > 0 ? `${visTotal.toLocaleString('da-DK')} kr. ex moms` : 'Ingen priser tilknyttet'}
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--brd)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ fontSize: 13, color: 'var(--muted)' }}>{valgtFirma} — {filtered.length} sag{filtered.length !== 1 ? 'er' : ''} afventer</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button
+                    onClick={kopierAdresseliste}
+                    className="btn btn-outline btn-sm"
+                    style={{ fontSize: 12 }}
+                  >
+                    📋 Kopiér adresseliste
+                  </button>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--pr)' }}>
+                    {visTotal > 0 ? `${visTotal.toLocaleString('da-DK')} kr. ex moms` : 'Ingen priser tilknyttet'}
+                  </div>
+                </div>
               </div>
             </div>
           )}
