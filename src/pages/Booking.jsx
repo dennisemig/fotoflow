@@ -343,7 +343,6 @@ export default function Booking() {
                       <div style={{ fontSize: 11, color: muted }}>{p.max_billeder} billeder · {p.leveringstid}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontFamily: serif, fontSize: 14, color: text }}>{p.pris?.toLocaleString('da-DK')} kr</div>
                       {form.pakke_id === p.id && <div style={{ fontSize: 9, color: muted, letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2 }}>✓ Valgt</div>}
                     </div>
                   </div>
@@ -369,12 +368,6 @@ export default function Booking() {
               </div>
             )}
 
-            {form.pakke_id && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 0', borderTop: `1px solid ${border}`, marginTop: 16 }}>
-                <span style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: muted }}>Total</span>
-                <span style={{ fontFamily: serif, fontSize: 15, color: text }}>{total.toLocaleString('da-DK')} kr</span>
-              </div>
-            )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               {btnBack(() => setStep(2))}
