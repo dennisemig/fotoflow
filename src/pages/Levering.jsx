@@ -11,8 +11,21 @@ export default function Levering() {
   const [udloebet, setUdloebet] = useState(false)
   const [valgte, setValgte] = useState(new Set())
   const [downloading, setDownloading] = useState(false)
+  const [lightbox, setLightbox] = useState(null)
 
   useEffect(() => { fetchLevering() }, [token])
+
+  useEffect(() => {
+    function onKey(e) {
+      if (!lightbox) return
+      const idx = billeder.findIndex(b => b.id === lightbox.id)
+      if (e.key === 'ArrowRight' && idx < billeder.length - 1) setLightbox(billeder[idx + 1])
+      if (e.key === 'ArrowLeft' && idx > 0) setLightbox(billeder[idx - 1])
+      if (e.key === 'Escape') setLightbox(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightbox, billeder])
 
   async function fetchLevering() {
     setLoading(true)
@@ -24,21 +37,18 @@ export default function Levering() {
 
     if (!sagData) { setLoading(false); setUdloebet(true); return }
 
-    // Tjek om link er udløbet
     if (sagData.levering_udloeber && new Date(sagData.levering_udloeber) < new Date()) {
       setLoading(false); setUdloebet(true); return
     }
 
     setSag(sagData)
 
-    // Hent billeder
     const { data: uploads } = await supabase
       .from('uploads')
       .select('*')
       .eq('sag_id', sagData.id)
       .order('bruger_tag', { ascending: true })
 
-    // Generer signerede URLs
     const billedMedLinks = []
     for (const u of (uploads || [])) {
       try {
@@ -48,12 +58,9 @@ export default function Levering() {
     }
 
     setBilleder(billedMedLinks)
-
-    // Brug direkte URL som thumbnail – virker på alle enheder
     const thumbMap = {}
     billedMedLinks.forEach(b => { thumbMap[b.id] = b.url })
     setThumbnails(thumbMap)
-
     setLoading(false)
   }
 
@@ -79,12 +86,20 @@ export default function Levering() {
     const valgteBilleder = billeder.filter(b => valgte.has(b.id))
     for (const b of valgteBilleder) {
       await downloadFil(b)
-      await new Promise(r => setTimeout(r, 500)) // lille pause mellem downloads
+      await new Promise(r => setTimeout(r, 500))
     }
     setDownloading(false)
   }
 
-  // Gruppér efter tag
+  async function downloadAlle() {
+    setDownloading(true)
+    for (const b of billeder) {
+      await downloadFil(b)
+      await new Promise(r => setTimeout(r, 500))
+    }
+    setDownloading(false)
+  }
+
   const grouped = {}
   billeder.forEach(b => {
     const tag = b.bruger_tag || 'Andet'
@@ -96,124 +111,205 @@ export default function Levering() {
     ? Math.ceil((new Date(sag.levering_udloeber) - new Date()) / (1000 * 60 * 60 * 24))
     : 7
 
+  const mono = "'DM Mono', 'SF Mono', 'Fira Mono', monospace"
+  const serif = "'EB Garamond', Georgia, serif"
+
+  const cbStyle = (erValgt) => ({
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 18,
+    height: 18,
+    border: '1.5px solid rgba(255,255,255,0.8)',
+    background: erValgt ? '#1a1a1a' : 'rgba(10,10,10,0.3)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    zIndex: 2,
+    fontSize: 11,
+    color: '#f0ede8',
+    fontFamily: mono,
+  })
+
   if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f5f7', fontFamily: 'system-ui' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-        <div style={{ color: '#6b7280' }}>Henter billeder...</div>
+    <div style={{ minHeight: '100vh', background: '#f0ede8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: mono }}>
+      <div style={{ textAlign: 'center', letterSpacing: '.1em', fontSize: 11, color: '#888', textTransform: 'uppercase' }}>
+        Henter arkiv...
       </div>
     </div>
   )
 
   if (udloebet) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f5f7', fontFamily: 'system-ui' }}>
-      <div style={{ textAlign: 'center', maxWidth: 380, padding: 32 }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>⏰</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: '#1a1a1a', marginBottom: 8 }}>Linket er udløbet</div>
-        <div style={{ color: '#6b7280', lineHeight: 1.6 }}>Dette leveringslink er ikke længere gyldigt. Kontakt VaniaGraphics for at få et nyt link.</div>
-        <a href="mailto:dennis@vaniagraphics.dk" style={{ display: 'inline-block', marginTop: 20, background: '#3A4A5A', color: '#fff', padding: '10px 20px', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
-          Kontakt VaniaGraphics
+    <div style={{ minHeight: '100vh', background: '#f0ede8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: mono, padding: 32 }}>
+      <div style={{ maxWidth: 400, textAlign: 'center' }}>
+        <img src="/vania-logo.png" alt="Vania" style={{ height: 24, marginBottom: 28, opacity: 0.6 }} />
+        <div style={{ fontSize: 22, fontFamily: serif, color: '#1a1a1a', marginBottom: 12 }}>Linket er udløbet</div>
+        <div style={{ fontSize: 12, color: '#666', lineHeight: 1.8, marginBottom: 28 }}>
+          Dette leveringslink er ikke længere aktivt.<br />
+          Kontakt Vania for et nyt link.
+        </div>
+        <a href="mailto:dennis@vania.dk" style={{ fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: '#1a1a1a', textDecoration: 'none', borderBottom: '1px solid #1a1a1a', paddingBottom: 2 }}>
+          dennis@vania.dk
         </a>
       </div>
     </div>
   )
 
+  const tagEntries = Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b))
+  const totalBilleder = billeder.length
+
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f5f7', fontFamily: 'system-ui' }}>
-      {/* HEADER */}
-      <div style={{ background: '#3A4A5A', color: '#fff', padding: '16px 24px' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>📷 VaniaGraphics</div>
-            <div style={{ fontSize: 13, opacity: .75, marginTop: 2 }}>Billedlevering</div>
+    <div style={{ minHeight: '100vh', background: '#f0ede8', fontFamily: mono }}>
+
+      {/* LIGHTBOX */}
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,10,.95)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img
+            src={lightbox.url}
+            alt={lightbox.filnavn}
+            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }}
+            onClick={e => e.stopPropagation()}
+          />
+          <div style={{ position: 'absolute', top: 20, right: 24, color: '#fff', fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', cursor: 'pointer', opacity: .6 }}
+            onClick={() => setLightbox(null)}>
+            Luk / ESC
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 13, opacity: .75 }}>⏳ Tilgængeligt i {dagetilbage} dag{dagetilbage !== 1 ? 'e' : ''} endnu</div>
+          <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', color: '#fff', fontSize: 10, letterSpacing: '.1em', opacity: .5 }}>
+            {lightbox.filnavn}
+          </div>
+          {billeder.findIndex(b => b.id === lightbox.id) > 0 && (
+            <div onClick={e => { e.stopPropagation(); const idx = billeder.findIndex(b => b.id === lightbox.id); setLightbox(billeder[idx - 1]) }}
+              style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', color: '#fff', fontSize: 28, cursor: 'pointer', opacity: .5, userSelect: 'none' }}>
+              ‹
+            </div>
+          )}
+          {billeder.findIndex(b => b.id === lightbox.id) < billeder.length - 1 && (
+            <div onClick={e => { e.stopPropagation(); const idx = billeder.findIndex(b => b.id === lightbox.id); setLightbox(billeder[idx + 1]) }}
+              style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', color: '#fff', fontSize: 28, cursor: 'pointer', opacity: .5, userSelect: 'none' }}>
+              ›
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* HEADER */}
+      <div style={{ borderBottom: '1px solid #ccc', padding: '14px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <img src="/vania-logo.png" alt="Vania" style={{ height: 28, display: 'block', marginBottom: 6 }} />
+          <div style={{ fontSize: 9, letterSpacing: '.15em', textTransform: 'uppercase', color: '#aaa' }}>
+            BILLEDARKIV — LEVERING
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 9, letterSpacing: '.15em', textTransform: 'uppercase', color: '#aaa', marginBottom: 2 }}>
+            TILGÆNGELIGT
+          </div>
+          <div style={{ fontSize: 9, letterSpacing: '.1em', color: '#888' }}>
+            {dagetilbage} DAG{dagetilbage !== 1 ? 'E' : ''} TILBAGE
           </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
-        {/* INFO */}
-        <div style={{ background: '#fff', borderRadius: 12, padding: 20, marginBottom: 20, border: '.5px solid #e5e7eb' }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#1a1a1a', marginBottom: 6 }}>{sag?.adresse}</div>
-          <div style={{ fontSize: 13, color: '#6b7280' }}>
-            {sag?.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''}
-            {' · '}{billeder.length} billeder
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px' }}>
+
+        {/* SAG INFO */}
+        <div style={{ padding: '28px 0 20px', borderBottom: '1px solid #ddd', display: 'grid', gridTemplateColumns: '1fr auto', gap: 20, alignItems: 'end' }}>
+          <div>
+            <div style={{ fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: '#999', marginBottom: 8 }}>ADRESSE</div>
+            <div style={{ fontSize: 26, fontFamily: serif, color: '#1a1a1a', fontWeight: 400, lineHeight: 1.2 }}>
+              {sag?.adresse}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 10, letterSpacing: '.1em', color: '#888' }}>
+              {sag?.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase() : ''}
+              {' · '}
+              {totalBilleder} FILER · {tagEntries.length} KATEGORIER
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 9, letterSpacing: '.15em', color: '#999', marginBottom: 4 }}>REF.</div>
+            <div style={{ fontSize: 10, color: '#888', letterSpacing: '.05em' }}>
+              {token?.slice(0, 8).toUpperCase()}
+            </div>
           </div>
         </div>
 
         {/* TOOLBAR */}
-        <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', marginBottom: 16, border: '.5px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ padding: '14px 0', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid #ddd' }}>
           <button onClick={vælgAlle}
-            style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            {valgte.size === billeder.length ? '☑ Fravælg alle' : '☐ Vælg alle'}
+            style={{ fontSize: 9, letterSpacing: '.15em', textTransform: 'uppercase', padding: '7px 14px', border: '1px solid #bbb', background: 'transparent', cursor: 'pointer', color: '#444', fontFamily: mono }}>
+            {valgte.size === billeder.length ? '— FRAVÆLG ALLE' : '+ VÆLG ALLE'}
           </button>
 
           {valgte.size > 0 && (
             <button onClick={downloadValgte} disabled={downloading}
-              style={{ padding: '7px 16px', borderRadius: 8, background: '#3A4A5A', color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              {downloading ? '⏳ Downloader...' : `⬇ Download ${valgte.size} billede${valgte.size !== 1 ? 'r' : ''}`}
+              style={{ fontSize: 9, letterSpacing: '.15em', textTransform: 'uppercase', padding: '7px 16px', border: '1px solid #1a1a1a', background: '#1a1a1a', color: '#f0ede8', cursor: 'pointer', fontFamily: mono }}>
+              {downloading ? 'DOWNLOADER...' : `↓ DOWNLOAD VALGTE (${valgte.size})`}
             </button>
           )}
 
-          <button onClick={async () => { setValgte(new Set(billeder.map(b => b.id))); setTimeout(downloadValgte, 100) }}
-            disabled={downloading}
-            style={{ padding: '7px 16px', borderRadius: 8, background: '#2e7d4f', color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            ⬇ Download alle ({billeder.length})
+          <button onClick={downloadAlle} disabled={downloading}
+            style={{ fontSize: 9, letterSpacing: '.15em', textTransform: 'uppercase', padding: '7px 16px', border: '1px solid #1a1a1a', background: 'transparent', color: '#1a1a1a', cursor: 'pointer', fontFamily: mono }}>
+            {downloading ? 'DOWNLOADER...' : `↓ DOWNLOAD ALLE (${totalBilleder})`}
           </button>
 
-          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af' }}>
-            Klik på billeder for at vælge
-          </div>
+          {valgte.size > 0 && (
+            <div style={{ marginLeft: 'auto', fontSize: 9, letterSpacing: '.1em', color: '#888', textTransform: 'uppercase' }}>
+              {valgte.size} VALGT
+            </div>
+          )}
         </div>
 
         {/* GROUPED GRID */}
-        {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([tag, items]) => (
-          <div key={tag} style={{ marginBottom: 28 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>{tag}</div>
-              <div style={{ fontSize: 12, color: '#9ca3af' }}>({items.length})</div>
-              <div style={{ flex: 1, height: 1, background: '#e5e7eb' }}></div>
+        {tagEntries.map(([tag, items], groupIdx) => (
+          <div key={tag} style={{ marginTop: 32, marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 14, paddingBottom: 8, borderBottom: '1px solid #ccc' }}>
+              <div style={{ fontSize: 9, letterSpacing: '.25em', textTransform: 'uppercase', color: '#444' }}>{tag}</div>
+              <div style={{ fontSize: 9, letterSpacing: '.1em', color: '#aaa' }}>{String(items.length).padStart(2, '0')}</div>
+              <div style={{ marginLeft: 'auto', fontSize: 9, letterSpacing: '.1em', color: '#bbb' }}>
+                {String(groupIdx + 1).padStart(2, '0')} / {String(tagEntries.length).padStart(2, '0')}
+              </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-              {items.map(b => {
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+              {items.map((b) => {
                 const erValgt = valgte.has(b.id)
                 const thumb = thumbnails[b.id] || b.url
+                const nr = billeder.indexOf(b) + 1
 
                 return (
-                  <div key={b.id}
-                    style={{ borderRadius: 10, overflow: 'hidden', border: erValgt ? '3px solid #3A4A5A' : '3px solid transparent', background: '#fff', boxShadow: erValgt ? '0 0 0 2px #3A4A5A' : '0 1px 4px rgba(0,0,0,.08)', transition: 'all .15s', cursor: 'pointer' }}
-                    onClick={() => toggleValgt(b.id)}>
-
-                    {/* THUMBNAIL */}
-                    <div style={{ position: 'relative', paddingBottom: '75%', background: '#e8edf1' }}>
-                      {thumb ? (
+                  <div key={b.id}>
+                    {/* BILLEDE — klik åbner lightbox */}
+                    <div
+                      onClick={() => setLightbox(b)}
+                      style={{ position: 'relative', paddingBottom: '75%', background: '#ddd', overflow: 'hidden', cursor: 'pointer' }}>
+                      {thumb && (
                         <img src={thumb} alt={b.filnavn}
-                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                      ) : (
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>
-                          {b.type === 'raw' ? '📷' : '🖼'}
-                        </div>
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transition: 'opacity .2s', opacity: erValgt ? 0.55 : 1 }} />
                       )}
-
-                      {erValgt && (
-                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(58,74,90,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#3A4A5A', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700 }}>✓</div>
-                        </div>
-                      )}
-
-                      {/* DOWNLOAD KNAP */}
-                      <div onClick={e => { e.stopPropagation(); downloadFil(b) }}
-                        style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,.6)', color: '#fff', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                        ⬇ Download
+                      {/* CHECKBOX */}
+                      <div
+                        onClick={e => { e.stopPropagation(); toggleValgt(b.id) }}
+                        style={cbStyle(erValgt)}>
+                        {erValgt ? '✓' : ''}
+                      </div>
+                      {/* FOTO NR */}
+                      <div style={{ position: 'absolute', bottom: 6, left: 8, fontSize: 9, letterSpacing: '.1em', color: 'rgba(255,255,255,.7)', fontFamily: mono, pointerEvents: 'none' }}>
+                        {String(nr).padStart(2, '0')}
                       </div>
                     </div>
 
-                    {/* FILNAVN */}
-                    <div style={{ padding: '8px 10px' }}>
-                      <div style={{ fontSize: 11, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.filnavn}</div>
+                    {/* UNDER BILLEDET */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0 10px' }}>
+                      <div style={{ fontSize: 9, letterSpacing: '.05em', color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                        {b.filnavn}
+                      </div>
+                      <span onClick={() => downloadFil(b)}
+                        style={{ fontSize: 9, letterSpacing: '.1em', color: '#888', cursor: 'pointer', textTransform: 'uppercase', textDecoration: 'underline' }}>
+                        ↓
+                      </span>
                     </div>
                   </div>
                 )
@@ -223,8 +319,16 @@ export default function Levering() {
         ))}
 
         {/* FOOTER */}
-        <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af', fontSize: 12 }}>
-          📷 VaniaGraphics · dennis@vaniagraphics.dk · Billederne er tilgængelige i {dagetilbage} dage
+        <div style={{ borderTop: '1px solid #ccc', marginTop: 40, padding: '20px 0 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <div>
+            <img src="/vania-logo.png" alt="Vania" style={{ height: 20, display: 'block', marginBottom: 6, opacity: 0.7 }} />
+            <div style={{ fontSize: 9, color: '#bbb', letterSpacing: '.05em' }}>dennis@vania.dk</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 9, letterSpacing: '.1em', color: '#bbb' }}>
+              ARKIV UDLØBER OM {dagetilbage} DAG{dagetilbage !== 1 ? 'E' : ''}
+            </div>
+          </div>
         </div>
       </div>
     </div>
