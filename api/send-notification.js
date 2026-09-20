@@ -17,11 +17,11 @@ export default async function handler(req, res) {
   function base(content) {
     return `<div style="background:${bg};font-family:${mono};max-width:560px;margin:0 auto;padding:32px 20px">
       <div style="text-align:center;padding-bottom:24px;border-bottom:1px solid ${border};margin-bottom:24px">
-        <img src="${LOGO}" alt="Vania" style="height:28px;display:inline-block" />
+        <img src="${LOGO}" alt="Vania" style="max-width:200px;width:100%;display:inline-block" />
       </div>
       ${content}
       <div style="border-top:1px solid ${border};margin-top:32px;padding-top:20px;text-align:center">
-        <img src="${LOGO}" alt="Vania" style="height:16px;display:inline-block;opacity:0.5;margin-bottom:8px" /><br>
+        <img src="${LOGO}" alt="Vania" style="max-width:120px;width:100%;display:inline-block;opacity:0.5;margin-bottom:8px" /><br>
         <span style="font-size:10px;color:${muted};letter-spacing:.12em;text-transform:uppercase">VANIAGRAPHICS.DK</span>
       </div>
     </div>`
