@@ -151,8 +151,8 @@ export default function Levering() {
           Dette leveringslink er ikke længere aktivt.<br />
           Kontakt Vania for et nyt link.
         </div>
-        <a href="mailto:dennis@vania.dk" style={{ fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: '#1a1a1a', textDecoration: 'none', borderBottom: '1px solid #1a1a1a', paddingBottom: 2 }}>
-          dennis@vania.dk
+        <a href="mailto:dennis@vaniagraphics.dk" style={{ fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: '#1a1a1a', textDecoration: 'none', borderBottom: '1px solid #1a1a1a', paddingBottom: 2 }}>
+          dennis@vaniagraphics.dk
         </a>
       </div>
     </div>
@@ -324,7 +324,7 @@ export default function Levering() {
         <div style={{ borderTop: '1px solid #ccc', marginTop: 40, padding: '20px 0 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
             <img src={LOGO} alt="Vania" style={{ height: 20, display: 'block', marginBottom: 6, opacity: 0.7 }} />
-            <div style={{ fontSize: 9, color: '#bbb', letterSpacing: '.05em' }}>dennis@vania.dk</div>
+            <div style={{ fontSize: 9, color: '#bbb', letterSpacing: '.05em' }}>dennis@vaniagraphics.dk</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 9, letterSpacing: '.1em', color: '#bbb' }}>
