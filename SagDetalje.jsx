@@ -24,6 +24,8 @@ export default function SagDetalje() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState({})
   const [dbxToken, setDbxToken] = useState(null)
+  const [mwUploading, setMwUploading] = useState(false)
+  const [mwResultat, setMwResultat] = useState(null)
   const fileInputRef = useRef()
   const { toasts, toast } = useToast()
 
@@ -36,7 +38,6 @@ export default function SagDetalje() {
   }, [id])
 
   async function checkDropboxAuth() {
-    // Check for token in URL after OAuth redirect
     const hash = window.location.hash
     if (hash.includes('access_token')) {
       const params = new URLSearchParams(hash.replace('#', '?'))
@@ -133,7 +134,6 @@ export default function SagDetalje() {
 
         const result = await response.json()
 
-        // Gem link i Supabase
         await supabase.from('uploads').insert([{
           sag_id: id,
           filnavn: file.name,
@@ -184,6 +184,82 @@ export default function SagDetalje() {
     } catch (e) {
       toast('Fejl ved sletning', 'error')
     }
+  }
+
+  async function sendTilMindworking() {
+    if (!mwNummer) { toast('Gem sagsnummer først', 'error'); return }
+
+    // Hent Dropbox links til alle billeder på sagen
+    const billedUploads = uploads.filter(u => u.type === 'billede')
+    if (billedUploads.length === 0) {
+      toast('Ingen billeder at sende til Mindworking', 'error')
+      return
+    }
+    if (!dbxToken) { connectDropbox(); return }
+
+    setMwUploading(true)
+    setMwResultat(null)
+
+    try {
+      // Hent midlertidige links fra Dropbox til alle billeder
+      const billeder = []
+      for (const u of billedUploads) {
+        try {
+          const r = await fetch('https://api.dropboxapi.com/2/files/get_temporary_link', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${dbxToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: u.dropbox_path })
+          })
+          const d = await r.json()
+          if (d.link) {
+            billeder.push({
+              url: d.link,
+              navn: u.filnavn,
+              beskrivelse: '',
+              tag: 'Billede'
+            })
+          }
+        } catch (e) {
+          console.warn('Kunne ikke hente link for', u.filnavn)
+        }
+      }
+
+      if (billeder.length === 0) {
+        toast('Kunne ikke hente Dropbox-links', 'error')
+        setMwUploading(false)
+        return
+      }
+
+      // Send til Mindworking med kundens shopNo og endpoint
+      const body = {
+        action: 'upload_billeder',
+        caseNo: mwNummer,
+        billeder,
+        shopNo: null,
+        mw_endpoint: kunde?.mindworking_endpoint || null,
+        mw_token_url: kunde?.mindworking_token_url || null,
+        mw_secret: kunde?.mindworking_secret || null,
+      }
+
+      const res = await fetch('/api/mindworking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        setMwResultat({ ok: true, uploadet: data.uploadet, total: data.total })
+        toast(`✓ ${data.uploadet} af ${data.total} billeder sendt til Mindworking!`)
+      } else {
+        setMwResultat({ ok: false, fejl: data.error })
+        toast(`Fejl: ${data.error}`, 'error')
+      }
+    } catch (e) {
+      toast(`Fejl: ${e.message}`, 'error')
+    }
+
+    setMwUploading(false)
   }
 
   async function saveEdit() {
@@ -244,8 +320,10 @@ export default function SagDetalje() {
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', leveret: 'leveret', ny: 'new', afsluttet: 'done' }[s] || 'new')
   const initials = n => n?.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase() || '?'
   const set = (k, v) => setEditForm(f => ({ ...f, [k]: v }))
-
   const fileIcon = type => type === 'billede' ? '🖼' : type?.includes('raw') ? '📷' : '📄'
+
+  const billedCount = uploads.filter(u => u.type === 'billede').length
+  const mwKlar = mwNummer && billedCount > 0
 
   return (
     <div>
@@ -340,7 +418,7 @@ export default function SagDetalje() {
             <div className="form-group" style={{ marginBottom: 10 }}>
               <label>Mindworking sagsnummer</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. MW-2024-1234" style={{ flex: 1 }} />
+                <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. 1030001543" style={{ flex: 1 }} />
                 <button className="btn btn-primary btn-sm" onClick={saveMwNummer}>Gem</button>
               </div>
             </div>
@@ -348,8 +426,23 @@ export default function SagDetalje() {
               ? <div className="ok-box" style={{ marginBottom: 10 }}>✓ Sagsnummer gemt</div>
               : <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Indtast sagsnummer fra Mindworking</div>
             }
-            <button className="btn btn-sm" style={{ background: mwNummer ? 'var(--pr)' : '#8fa8bc', color: '#fff', opacity: mwNummer ? 1 : 0.6, cursor: mwNummer ? 'pointer' : 'not-allowed' }} disabled={!mwNummer}>
-              ⚡ Send til Mindworking
+            {!mwKlar && billedCount === 0 && mwNummer && (
+              <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Upload billeder via Dropbox først</div>
+            )}
+            {mwResultat && (
+              <div className={mwResultat.ok ? 'ok-box' : 'warn-box'} style={{ marginBottom: 10 }}>
+                {mwResultat.ok
+                  ? `✓ ${mwResultat.uploadet} af ${mwResultat.total} billeder sendt til Mindworking`
+                  : `Fejl: ${mwResultat.fejl}`}
+              </div>
+            )}
+            <button
+              className="btn btn-sm"
+              style={{ background: mwKlar ? 'var(--pr)' : '#8fa8bc', color: '#fff', opacity: mwKlar ? 1 : 0.6, cursor: mwKlar ? 'pointer' : 'not-allowed' }}
+              disabled={!mwKlar || mwUploading}
+              onClick={sendTilMindworking}
+            >
+              {mwUploading ? '⏳ Sender...' : `⚡ Send ${billedCount} billede${billedCount !== 1 ? 'r' : ''} til Mindworking`}
             </button>
           </div>
         </div>
