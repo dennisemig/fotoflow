@@ -23,6 +23,18 @@ export default function Bookinger() {
   }
 
   async function godkend(booking) {
+    // Slå kunde op via maegler_firma
+    let kunde_id = null
+    if (booking.maegler_firma) {
+      const { data: kundeMatch } = await supabase
+        .from('kunder')
+        .select('id')
+        .ilike('navn', `%${booking.maegler_firma}%`)
+        .limit(1)
+        .single()
+      if (kundeMatch) kunde_id = kundeMatch.id
+    }
+
     // Opret sag fra booking med mægler-info
     const { data: sag, error } = await supabase.from('sager').insert([{
       adresse: booking.adresse,
@@ -35,7 +47,8 @@ export default function Bookinger() {
       maegler_navn: booking.maegler_navn,
       maegler_email: booking.maegler_email,
       maegler_firma: booking.maegler_firma,
-      mindworking_sagsnummer: booking.sagsnummer || null,
+      kunde_id: kunde_id,
+      mw_nummer: booking.sagsnummer || null,
     }]).select().single()
 
     if (error) { toast('Fejl ved oprettelse af sag: ' + error.message, 'error'); return }
