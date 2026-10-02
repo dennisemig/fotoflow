@@ -48,7 +48,7 @@ export default function Bookinger() {
       maegler_email: booking.maegler_email,
       maegler_firma: booking.maegler_firma,
       kunde_id: kunde_id,
-      mw_nummer: booking.sagsnummer || null,
+      maegler_sagsnummer: booking.sagsnummer || null,
     }]).select().single()
 
     if (error) { toast('Fejl ved oprettelse af sag: ' + error.message, 'error'); return }
