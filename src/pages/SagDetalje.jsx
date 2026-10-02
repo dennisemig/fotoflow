@@ -2,255 +2,141 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
+import BilledeGalleri from './BilledeGalleri'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
-
 export default function SagDetalje() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [sag, setSag] = useState(null)
+  const [fakturerer, setFakturerer] = useState(false)
   const [kunde, setKunde] = useState(null)
   const [freelancer, setFreelancer] = useState(null)
   const [freelancere, setFreelancere] = useState([])
   const [kunder, setKunder] = useState([])
   const [noter, setNoter] = useState('')
   const [mwNummer, setMwNummer] = useState('')
+  const [mwData, setMwData] = useState(null)
+  const [mwLoading, setMwLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showBookModal, setShowBookModal] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({})
-  const [uploads, setUploads] = useState([])
-  const [uploading, setUploading] = useState(false)
-  const [mwUploading, setMwUploading] = useState(false)
-  const [mwResultat, setMwResultat] = useState(null)
-  const fileInputRef = useRef()
   const { toasts, toast } = useToast()
 
   useEffect(() => {
-    fetchSag()
-    fetchFreelancere()
-    fetchKunder()
-    fetchUploads()
+    fetchSag(); fetchFreelancere(); fetchKunder()
   }, [id])
 
   async function fetchSag() {
-    const { data, error } = await supabase
-      .from('sager')
-      .select('id, adresse, dato, tidspunkt, type, maks_billeder, kunde_id, freelancer_id, status, noter, mw_nummer, bbr_data')
-      .eq('id', id)
-      .single()
+    const { data } = await supabase.from('sager').select('*').eq('id', id).single()
     if (!data) return
-    setSag(data)
-    setNoter(data.noter || '')
-    setMwNummer(data.mw_nummer || '')
-    setEditForm({
-      adresse: data.adresse || '',
-      dato: data.dato || '',
-      tidspunkt: data.tidspunkt ? String(data.tidspunkt).slice(0, 5) : '',
-      type: data.type || 'ejendom',
-      maks_billeder: data.maks_billeder || 20,
-      kunde_id: data.kunde_id || '',
-      freelancer_id: data.freelancer_id || '',
-    })
-    if (data.kunde_id) {
-      const { data: k } = await supabase.from('kunder').select('*').eq('id', data.kunde_id).single()
-      setKunde(k)
-    }
-    if (data.freelancer_id) {
-      const { data: f } = await supabase.from('freelancere').select('*').eq('id', data.freelancer_id).single()
-      setFreelancer(f)
-    }
+    setSag(data); setNoter(data.noter || ''); setMwNummer(data.maegler_sagsnummer || '')
+    setEditForm({ adresse: data.adresse || '', dato: data.dato || '', tidspunkt: data.tidspunkt ? String(data.tidspunkt).slice(0,5) : '', tidspunkt_slut: data.tidspunkt_slut ? String(data.tidspunkt_slut).slice(0,5) : '', type: data.type || 'ejendom', maks_billeder: data.maks_billeder || 20, kunde_id: data.kunde_id || '', freelancer_id: data.freelancer_id || '' })
+    if (data.kunde_id) { const { data: k } = await supabase.from('kunder').select('*').eq('id', data.kunde_id).single(); setKunde(k); console.log('Kunde data:', JSON.stringify(k)) }
+    if (data.freelancer_id) { const { data: f } = await supabase.from('freelancere').select('*').eq('id', data.freelancer_id).single(); setFreelancer(f) }
   }
+  async function fetchFreelancere() { const { data } = await supabase.from('freelancere').select('id, navn, email').eq('aktiv', true); setFreelancere(data || []) }
+  async function fetchKunder() { const { data } = await supabase.from('kunder').select('id, navn').order('navn'); setKunder(data || []) }
 
-  async function fetchFreelancere() {
-    const { data } = await supabase.from('freelancere').select('id, navn, email').eq('aktiv', true)
-    setFreelancere(data || [])
-  }
-
-  async function fetchKunder() {
-    const { data } = await supabase.from('kunder').select('id, navn').order('navn')
-    setKunder(data || [])
-  }
-
-  async function fetchUploads() {
-    const { data } = await supabase.from('uploads').select('*').eq('sag_id', id).order('uploaded_at', { ascending: false })
-    setUploads(data || [])
-  }
-
-  async function uploadFiles(files) {
-    if (!files || files.length === 0) return
-    setUploading(true)
-
-    for (const file of Array.from(files)) {
-      try {
-        const sagNavn = sag?.adresse?.replace(/[^a-zA-Z0-9æøåÆØÅ\s]/g, '_') || id
-        const filePath = `${id}/${Date.now()}_${file.name}`
-
-        // Upload til Supabase Storage bucket 'billeder'
-        const { data: storageData, error: storageError } = await supabase.storage
-          .from('billeder')
-          .upload(filePath, file, { upsert: true })
-
-        if (storageError) throw storageError
-
-        const { data: urlData } = supabase.storage.from('billeder').getPublicUrl(filePath)
-
-        await supabase.from('uploads').insert([{
-          sag_id: id,
-          filnavn: file.name,
-          storage_path: filePath,
-          url: urlData?.publicUrl || null,
-          type: file.type.startsWith('image/') ? 'billede' : 'fil',
-          uploaded_at: new Date().toISOString()
-        }])
-
-        toast(`✓ ${file.name} uploaded!`)
-      } catch (e) {
-        toast(`Fejl ved upload af ${file.name}: ${e.message}`, 'error')
-      }
-    }
-
-    setUploading(false)
-    fetchUploads()
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
-  async function openFile(upload) {
-    // Prøv url fra uploads tabel, eller byg fra storage_path
-    if (upload.url) {
-      window.open(upload.url, '_blank')
-    } else if (upload.storage_path) {
-      const { data } = supabase.storage.from('billeder').getPublicUrl(upload.storage_path)
-      window.open(data.publicUrl, '_blank')
-    } else if (upload.dropbox_path) {
-      toast('Dropbox-filer kan ikke åbnes direkte', 'error')
-    } else {
-      toast('Ingen URL til filen', 'error')
-    }
-  }
-
-  async function deleteUpload(upload) {
-    if (!confirm(`Slet ${upload.filnavn}?`)) return
-    try {
-      if (upload.storage_path) {
-        await supabase.storage.from('billeder').remove([upload.storage_path])
-      }
-      await supabase.from('uploads').delete().eq('id', upload.id)
-      setUploads(u => u.filter(x => x.id !== upload.id))
-      toast('Fil slettet')
-    } catch (e) {
-      toast('Fejl ved sletning', 'error')
-    }
-  }
-
-  async function sendTilMindworking() {
-    if (!mwNummer) { toast('Gem sagsnummer først', 'error'); return }
-
-    const billedUploads = uploads.filter(u => u.type === 'billede')
-    if (billedUploads.length === 0) {
-      toast('Ingen billeder at sende til Mindworking', 'error')
-      return
-    }
-
-    setMwUploading(true)
-    setMwResultat(null)
-
-    try {
-      const billeder = billedUploads.map(u => ({
-        url: u.url || (u.storage_path ? supabase.storage.from('billeder').getPublicUrl(u.storage_path).data.publicUrl : null),
-        navn: u.filnavn,
-        beskrivelse: '',
-        tag: 'Billede'
-      })).filter(b => b.url)
-
-      if (billeder.length === 0) {
-        toast('Kunne ikke hente billedlinks', 'error')
-        setMwUploading(false)
-        return
-      }
-
-      const body = {
-        action: 'upload_billeder',
-        caseNo: mwNummer,
-        billeder,
-        shopNo: null,
-        mw_endpoint: kunde?.mindworking_endpoint || null,
-        mw_token_url: kunde?.mindworking_token_url || null,
-        mw_secret: kunde?.mindworking_secret || null,
-      }
-
-      const res = await fetch('/api/mindworking', {
+  async function bookFreelancerOgSendMail(fId) {
+    const fl = freelancere.find(f => f.id === fId)
+    await supabase.from('sager').update({ freelancer_id: fId }).eq('id', id)
+    setFreelancer(fl); setSag(s => ({ ...s, freelancer_id: fId })); setShowBookModal(false)
+    if (fl?.email) {
+      await fetch('/api/send-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-      const data = await res.json()
-
-      if (data.success) {
-        setMwResultat({ ok: true, uploadet: data.uploadet, total: data.total })
-        toast(`✓ ${data.uploadet} af ${data.total} billeder sendt til Mindworking!`)
-      } else {
-        setMwResultat({ ok: false, fejl: data.error })
-        toast(`Fejl: ${data.error}`, 'error')
-      }
-    } catch (e) {
-      toast(`Fejl: ${e.message}`, 'error')
+        body: JSON.stringify({
+          type: 'freelancer_booking',
+          mægler: {
+            email: fl.email, navn: fl.navn, adresse: sag.adresse,
+            dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—',
+            tidspunkt: sag.tidspunkt ? String(sag.tidspunkt).slice(0, 5) : '—',
+            type: sag.type, noter: sag.noter
+          }
+        })
+      }).catch(() => {})
     }
+    toast(`✓ ${fl?.navn} booket – mail sendt!`)
+  }
 
-    setMwUploading(false)
+  async function leverSag() {
+    if (!confirm('Marker sagen som leveret og send gallerilink til mægler?')) return
+    const token = crypto.randomUUID()
+    const udloeber = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    const galleriLink = `${window.location.origin}/levering/${token}`
+    await supabase.from('sager').update({ status: 'leveret', levering_token: token, levering_udloeber: udloeber }).eq('id', id)
+    setSag(s => ({ ...s, status: 'leveret', levering_token: token }))
+    const { count } = await supabase.from('uploads').select('*', { count: 'exact', head: true }).eq('sag_id', id)
+    const modtager = sag.maegler_email || kunde?.email
+    const navn = sag.maegler_navn || kunde?.navn
+    if (modtager) {
+      await fetch('/api/send-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'levering',
+          mægler: {
+            email: modtager, navn, adresse: sag.adresse,
+            dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—',
+            antal_billeder: count || 0,
+            galleri_link: galleriLink
+          }
+        })
+      }).catch(() => {})
+      toast(`✓ Sag leveret – gallerilink sendt til mægler!`)
+    } else {
+      toast('✓ Sag markeret som leveret')
+    }
+  }
+
+  async function markerFaktureret() {
+    if (!confirm(sag.faktureret ? 'Marker sagen som IKKE faktureret?' : 'Marker sagen som faktureret?')) return
+    setFakturerer(true)
+    const nyVærdi = !sag.faktureret
+    await supabase.from('sager').update({
+      faktureret: nyVærdi,
+      faktureret_dato: nyVærdi ? new Date().toISOString() : null
+    }).eq('id', id)
+    setSag(s => ({ ...s, faktureret: nyVærdi, faktureret_dato: nyVærdi ? new Date().toISOString() : null }))
+    setFakturerer(false)
+    toast(nyVærdi ? '✓ Sag markeret som faktureret' : '✓ Fakturering fjernet')
   }
 
   async function saveEdit() {
     setSaving(true)
-    const { error } = await supabase.from('sager').update({
-      adresse: editForm.adresse,
-      dato: editForm.dato,
-      tidspunkt: editForm.tidspunkt || null,
-      type: editForm.type,
-      maks_billeder: editForm.maks_billeder,
-      kunde_id: editForm.kunde_id || null,
-      freelancer_id: editForm.freelancer_id || null,
-    }).eq('id', id)
-    if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
-    setSaving(false); setEditing(false); fetchSag()
-    toast('✓ Sag opdateret')
+    await supabase.from('sager').update({ adresse: editForm.adresse, dato: editForm.dato, tidspunkt: editForm.tidspunkt || null, tidspunkt_slut: editForm.tidspunkt_slut || null, type: editForm.type, maks_billeder: editForm.maks_billeder, kunde_id: editForm.kunde_id || null, freelancer_id: editForm.freelancer_id || null }).eq('id', id)
+    setSaving(false); setEditing(false); fetchSag(); toast('✓ Sag opdateret')
   }
+  async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); toast('✓ Noter gemt') }
+  async function saveMwNummer() { await supabase.from('sager').update({ maegler_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, maegler_sagsnummer: mwNummer })); toast('✓ Gemt') }
 
-  async function saveNoter() {
-    setSaving(true)
-    await supabase.from('sager').update({ noter }).eq('id', id)
-    setSaving(false); toast('✓ Noter gemt')
+  async function hentMwSag() {
+    if (!mwNummer) return
+    setMwLoading(true)
+    try {
+      const r = await fetch('/api/mindworking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_case', caseNo: mwNummer })
+      })
+      const result = await r.json()
+      if (result.success && result.case) {
+        setMwData(result.case)
+        toast('✓ Sagsdata hentet fra Mindworking!')
+      } else {
+        toast('Fejl: ' + (result.error || 'Sag ikke fundet'), 'error')
+      }
+    } catch (e) {
+      toast('Fejl: ' + e.message, 'error')
+    }
+    setMwLoading(false)
   }
-
-  async function saveMwNummer() {
-    await supabase.from('sager').update({ mw_nummer: mwNummer }).eq('id', id)
-    setSag(s => ({ ...s, mw_nummer: mwNummer }))
-    toast('✓ Mindworking sagsnummer gemt')
-  }
-
-  async function updateStatus(status) {
-    await supabase.from('sager').update({ status }).eq('id', id)
-    setSag(s => ({ ...s, status })); toast('✓ Status opdateret')
-  }
-
-  async function sletSag() {
-    if (!confirm('Slet denne sag permanent?')) return
-    await supabase.from('sager').delete().eq('id', id)
-    navigate('/sager')
-  }
-
-  async function bookFreelancer(fId) {
-    const fl = freelancere.find(f => f.id === fId)
-    await supabase.from('sager').update({ freelancer_id: fId }).eq('id', id)
-    setFreelancer(fl); setSag(s => ({ ...s, freelancer_id: fId }))
-    setShowBookModal(false); toast(`✓ ${fl?.navn} booket!`)
-  }
-
-  async function fjernFreelancer() {
-    await supabase.from('sager').update({ freelancer_id: null }).eq('id', id)
-    setFreelancer(null); setSag(s => ({ ...s, freelancer_id: null }))
-    toast('Freelancer fjernet')
-  }
+  async function updateStatus(status) { await supabase.from('sager').update({ status }).eq('id', id); setSag(s => ({ ...s, status })); toast('✓ Status opdateret') }
+  async function sletSag() { if (!confirm('Slet sagen permanent?')) return; await supabase.from('sager').delete().eq('id', id); navigate('/sager') }
+  async function bookFreelancer(fId) { await bookFreelancerOgSendMail(fId) }
+  async function fjernFreelancer() { await supabase.from('sager').update({ freelancer_id: null }).eq('id', id); setFreelancer(null); setSag(s => ({ ...s, freelancer_id: null })); toast('Fjernet') }
 
   if (!sag) return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>Indlæser...</div>
 
@@ -258,10 +144,7 @@ export default function SagDetalje() {
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', leveret: 'leveret', ny: 'new', afsluttet: 'done' }[s] || 'new')
   const initials = n => n?.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase() || '?'
   const set = (k, v) => setEditForm(f => ({ ...f, [k]: v }))
-  const fileIcon = type => type === 'billede' ? '🖼' : type?.includes('raw') ? '📷' : '📄'
-
-  const billedCount = uploads.filter(u => u.type === 'billede').length
-  const mwKlar = mwNummer && billedCount > 0
+  const fileIcon = t => t === 'raw' ? '📷' : t === 'billede' ? '🖼' : '📄'
 
   return (
     <div>
@@ -269,9 +152,7 @@ export default function SagDetalje() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div className="back-link" style={{ margin: 0 }} onClick={() => navigate('/sager')}>← Tilbage til sager</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-outline btn-sm" onClick={() => setEditing(!editing)}>
-            {editing ? 'Annuller' : '✏ Rediger sag'}
-          </button>
+          <button className="btn btn-outline btn-sm" onClick={() => setEditing(!editing)}>{editing ? 'Annuller' : '✏ Rediger sag'}</button>
           <button className="btn btn-red btn-sm" onClick={sletSag}>🗑 Slet</button>
         </div>
       </div>
@@ -283,28 +164,20 @@ export default function SagDetalje() {
 
       {editing && (
         <div className="card" style={{ marginBottom: 16, border: '2px solid var(--pr)' }}>
-          <div className="section-hd">Rediger sagsoplysninger</div>
+          <div className="section-hd">Rediger sag</div>
           <div className="form-group"><label>Adresse</label><input value={editForm.adresse} onChange={e => set('adresse', e.target.value)} /></div>
-          <div className="form-group"><label>Kunde</label>
-            <select value={editForm.kunde_id} onChange={e => set('kunde_id', e.target.value)}>
-              <option value="">— Ingen kunde —</option>
-              {kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}
-            </select>
-          </div>
+          <div className="form-group"><label>Kunde</label><select value={editForm.kunde_id} onChange={e => set('kunde_id', e.target.value)}><option value="">— Ingen —</option>{kunder.map(k => <option key={k.id} value={k.id}>{k.navn}</option>)}</select></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group"><label>Dato</label><input type="date" value={editForm.dato} onChange={e => set('dato', e.target.value)} /></div>
-            <div className="form-group"><label>Tidspunkt</label><input type="time" value={editForm.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+            <div className="form-group"><label>Fra</label><input type="time" value={editForm.tidspunkt} onChange={e => set('tidspunkt', e.target.value)} /></div>
+            <div className="form-group"><label>Til</label><input type="time" value={editForm.tidspunkt_slut || ''} onChange={e => set('tidspunkt_slut', e.target.value)} /></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div className="form-group"><label>Type</label>
-              <select value={editForm.type} onChange={e => set('type', e.target.value)}>
-                {TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-              </select>
-            </div>
+            <div className="form-group"><label>Type</label><select value={editForm.type} onChange={e => set('type', e.target.value)}>{TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}</select></div>
             <div className="form-group"><label>Maks billeder</label><input type="number" value={editForm.maks_billeder} onChange={e => set('maks_billeder', parseInt(e.target.value))} /></div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-green" onClick={saveEdit} disabled={saving}>{saving ? 'Gemmer...' : '✓ Gem ændringer'}</button>
+            <button className="btn btn-green" onClick={saveEdit} disabled={saving}>{saving ? 'Gemmer...' : '✓ Gem'}</button>
             <button className="btn btn-outline" onClick={() => setEditing(false)}>Annuller</button>
           </div>
         </div>
@@ -317,7 +190,7 @@ export default function SagDetalje() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               {[
                 { lbl: 'Dato', val: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—' },
-                { lbl: 'Tidspunkt', val: sag.tidspunkt ? String(sag.tidspunkt).slice(0, 5) : '—' },
+                { lbl: 'Tidspunkt', val: sag.tidspunkt ? `${String(sag.tidspunkt).slice(0,5)}${sag.tidspunkt_slut ? ` – ${String(sag.tidspunkt_slut).slice(0,5)}` : ''}` : '—' },
                 { lbl: 'Type', val: sag.type || '—' },
                 { lbl: 'Maks billeder', val: sag.maks_billeder || 20 },
               ].map((r, i) => (
@@ -327,7 +200,7 @@ export default function SagDetalje() {
                 </div>
               ))}
             </div>
-            <button className="btn btn-outline btn-sm" onClick={() => window.open(`https://maps.google.com?q=${encodeURIComponent(sag.adresse)}`)}>📍 Vis på Google Maps</button>
+            <button className="btn btn-outline btn-sm" onClick={() => window.open(`https://maps.google.com?q=${encodeURIComponent(sag.adresse)}`)}>📍 Google Maps</button>
           </div>
 
           {kunde && (
@@ -340,14 +213,51 @@ export default function SagDetalje() {
             </div>
           )}
 
+          {!kunde && (sag.maegler_navn || sag.maegler_email) && (
+            <div className="card">
+              <div className="section-hd">Mægler</div>
+              <div style={{ marginBottom: 6 }}><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Navn</div><div style={{ fontWeight: 600 }}>{sag.maegler_navn || '—'}</div></div>
+              <div style={{ marginBottom: 6 }}><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Firma</div><div>{sag.maegler_firma || '—'}</div></div>
+              <div><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Email</div><div style={{ color: 'var(--pr)' }}>{sag.maegler_email || '—'}</div></div>
+            </div>
+          )}
+
           <div className="card">
             <div className="section-hd">Opdater status</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {['ny', 'aktiv', 'afventer', 'afsluttet', 'leveret'].map(s => (
-                <button key={s} onClick={() => updateStatus(s)} className={`btn btn-sm ${sag.status === s ? 'btn-primary' : 'btn-outline'}`}>
-                  {statusLabel(s)}
-                </button>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+              {['ny','aktiv','afventer','afsluttet'].map(s => (
+                <button key={s} onClick={() => updateStatus(s)} className={`btn btn-sm ${sag.status === s ? 'btn-primary' : 'btn-outline'}`}>{statusLabel(s)}</button>
               ))}
+            </div>
+            {sag.status !== 'leveret' && sag.status !== 'afsluttet' ? (
+              <button onClick={leverSag} className="btn btn-sm" style={{ background: '#2e7d4f', color: '#fff', width: '100%', justifyContent: 'center' }}>
+                📸 Marker som leveret – send mail til mægler
+              </button>
+            ) : (
+              <div>
+                <div className="ok-box" style={{ marginBottom: 8 }}>✓ Sag leveret – mægler er notificeret</div>
+                {sag.levering_token && (
+                  <a href={`${window.location.origin}/levering/${sag.levering_token}`} target="_blank" rel="noreferrer"
+                    className="btn btn-sm btn-outline" style={{ width: '100%', justifyContent: 'center', display: 'flex' }}>
+                    🔗 Se galleri som mægler ser det
+                  </a>
+                )}
+              </div>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <button onClick={markerFaktureret} disabled={fakturerer} className="btn btn-sm" style={{
+                width: '100%', justifyContent: 'center',
+                background: sag.faktureret ? '#f0fdf4' : '#fff',
+                color: sag.faktureret ? '#2e7d4f' : '#3A4A5A',
+                border: sag.faktureret ? '1.5px solid #2e7d4f' : '1.5px solid #e5e7eb'
+              }}>
+                {fakturerer ? '⏳' : sag.faktureret ? '✅ Faktureret' : '🧾 Marker som faktureret'}
+                {sag.faktureret && sag.faktureret_dato && (
+                  <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.7 }}>
+                    {new Date(sag.faktureret_dato).toLocaleDateString('da-DK')}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
@@ -356,29 +266,36 @@ export default function SagDetalje() {
             <div className="form-group" style={{ marginBottom: 10 }}>
               <label>Mindworking sagsnummer</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. 1030001543" style={{ flex: 1 }} />
+                <input value={mwNummer} onChange={e => setMwNummer(e.target.value)} placeholder="f.eks. N2601420000799" style={{ flex: 1 }} />
                 <button className="btn btn-primary btn-sm" onClick={saveMwNummer}>Gem</button>
               </div>
             </div>
-            {mwNummer
-              ? <div className="ok-box" style={{ marginBottom: 10 }}>✓ Sagsnummer gemt</div>
-              : <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Indtast sagsnummer fra Mindworking</div>
-            }
-            {mwResultat && (
-              <div className={mwResultat.ok ? 'ok-box' : 'warn-box'} style={{ marginBottom: 10 }}>
-                {mwResultat.ok
-                  ? `✓ ${mwResultat.uploadet} af ${mwResultat.total} billeder sendt til Mindworking`
-                  : `Fejl: ${mwResultat.fejl}`}
+            {mwNummer && (
+              <button className="btn btn-outline btn-sm" style={{ marginBottom: 10, width: '100%', justifyContent: 'center' }} onClick={hentMwSag} disabled={mwLoading}>
+                {mwLoading ? '⏳ Henter...' : '🔍 Hent sagsoplysninger fra Mindworking'}
+              </button>
+            )}
+            {mwData && (
+              <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 14, marginBottom: 10, fontSize: 13 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>Sagsdata fra Mindworking</div>
+                {mwData.address && <div style={{ marginBottom: 4 }}>📍 <span style={{ color: 'var(--muted)' }}>Adresse:</span> <b>{mwData.address}{mwData.zipCode ? `, ${mwData.zipCode}` : ''}{mwData.city ? ` ${mwData.city}` : ''}</b></div>}
+                {mwData.price && <div style={{ marginBottom: 4 }}>💰 <span style={{ color: 'var(--muted)' }}>Pris:</span> <b>{Number(mwData.price).toLocaleString('da-DK')} kr</b></div>}
+                {mwData.rooms && <div style={{ marginBottom: 4 }}>🚪 <span style={{ color: 'var(--muted)' }}>Værelser:</span> <b>{mwData.rooms}</b></div>}
+                {mwData.size && <div style={{ marginBottom: 4 }}>📐 <span style={{ color: 'var(--muted)' }}>Størrelse:</span> <b>{mwData.size} m²</b></div>}
+                {(mwData.ownerName || mwData.sellerName) && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '.5px solid var(--brd)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6 }}>Sælger</div>
+                    {(mwData.ownerName || mwData.sellerName) && <div style={{ marginBottom: 4 }}>👤 <b>{mwData.ownerName || mwData.sellerName}</b></div>}
+                    {(mwData.ownerEmail || mwData.sellerEmail) && <div style={{ marginBottom: 4 }}>✉ <a href={`mailto:${mwData.ownerEmail || mwData.sellerEmail}`} style={{ color: 'var(--pr)' }}>{mwData.ownerEmail || mwData.sellerEmail}</a></div>}
+                    {(mwData.ownerPhone || mwData.sellerPhone) && <div style={{ marginBottom: 4 }}>📞 {mwData.ownerPhone || mwData.sellerPhone}</div>}
+                  </div>
+                )}
+                {mwData.liebhaveri !== undefined && <div style={{ marginTop: 4 }}>⭐ <span style={{ color: 'var(--muted)' }}>Liebhaveri:</span> {mwData.liebhaveri ? 'Ja' : 'Nej'}</div>}
+                {mwData.media?.items?.length > 0 && <div style={{ marginTop: 4 }}>🖼 <span style={{ color: 'var(--muted)' }}>Billeder i Mindworking:</span> <b>{mwData.media.items.length}</b></div>}
               </div>
             )}
-            <button
-              className="btn btn-sm"
-              style={{ background: mwKlar ? 'var(--pr)' : '#8fa8bc', color: '#fff', opacity: mwKlar ? 1 : 0.6, cursor: mwKlar ? 'pointer' : 'not-allowed' }}
-              disabled={!mwKlar || mwUploading}
-              onClick={sendTilMindworking}
-            >
-              {mwUploading ? '⏳ Sender...' : `⚡ Send ${billedCount} billede${billedCount !== 1 ? 'r' : ''} til Mindworking`}
-            </button>
+            {mwNummer ? <div className="ok-box" style={{ marginBottom: 10 }}>✓ Sagsnummer gemt</div> : <div className="warn-box" style={{ marginBottom: 10 }}>⏳ Indtast sagsnummer fra Mindworking</div>}
+            <button className="btn btn-sm" style={{ background: mwNummer ? 'var(--pr)' : '#8fa8bc', color: '#fff', opacity: mwNummer ? 1 : 0.6, cursor: mwNummer ? 'pointer' : 'not-allowed' }} disabled={!mwNummer}>⚡ Send til Mindworking</button>
           </div>
         </div>
 
@@ -398,60 +315,28 @@ export default function SagDetalje() {
                 </div>
               </>
             ) : (
-              <>
-                <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 10 }}>Ingen freelancer booket</div>
-                <button className="btn btn-primary btn-sm" onClick={() => setShowBookModal(true)}>+ Book freelancer</button>
-              </>
+              <><div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 10 }}>Ingen freelancer booket</div><button className="btn btn-primary btn-sm" onClick={() => setShowBookModal(true)}>+ Book freelancer</button></>
             )}
           </div>
 
           <div className="card">
             <div className="section-hd">Noter</div>
-            <textarea value={noter} onChange={e => setNoter(e.target.value)}
-              style={{ width: '100%', minHeight: 80, padding: 10, border: '1px solid var(--brd)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }}
-              placeholder="Skriv noter til sagen..." />
+            <textarea value={noter} onChange={e => setNoter(e.target.value)} style={{ width: '100%', minHeight: 80, padding: 10, border: '1px solid var(--brd)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} placeholder="Skriv noter til sagen..." />
             <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={saveNoter} disabled={saving}>{saving ? 'Gemmer...' : 'Gem noter'}</button>
           </div>
 
-          {/* UPLOAD - Supabase Storage */}
           <div className="card">
             <div className="section-hd">Filer & billeder</div>
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--pr)' }}
-              onDragLeave={e => e.currentTarget.style.borderColor = '#c5d3dc'}
-              onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#c5d3dc'; uploadFiles(e.dataTransfer.files) }}
-              style={{ border: '2px dashed #c5d3dc', borderRadius: 12, padding: 20, textAlign: 'center', cursor: 'pointer', marginBottom: 12, transition: 'border-color .2s' }}>
-              <div style={{ fontSize: 24, marginBottom: 6 }}>📂</div>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                <strong style={{ color: 'var(--pr)' }}>Klik eller træk filer hertil</strong><br />
-                <span style={{ fontSize: 11 }}>JPG, RAW, PNG – gemmes i Supabase</span>
-              </div>
-              {uploading && <div style={{ fontSize: 12, color: 'var(--pr)', marginTop: 8, fontWeight: 600 }}>⏳ Uploader...</div>}
-            </div>
-            <input ref={fileInputRef} type="file" multiple accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng" style={{ display: 'none' }} onChange={e => uploadFiles(e.target.files)} />
-
-            {uploads.length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
-                  Uploadede filer ({uploads.length})
-                </div>
-                {uploads.map(u => (
-                  <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '.5px solid var(--brd)' }}>
-                    <span style={{ fontSize: 18 }}>{fileIcon(u.type)}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.filnavn}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{u.uploaded_at ? new Date(u.uploaded_at).toLocaleDateString('da-DK') : ''}</div>
-                    </div>
-                    <button className="btn btn-outline btn-sm" onClick={() => openFile(u)}>Åbn</button>
-                    <button className="btn btn-red btn-sm" onClick={() => deleteUpload(u)}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {uploads.length === 0 && !uploading && (
-              <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>Ingen filer uploadet endnu</div>
-            )}
+            <BilledeGalleri
+              sagId={id}
+              sagAdresse={sag?.adresse}
+              mwNummer={sag?.maegler_sagsnummer}
+              mwEndpoint={kunde?.mindworking_endpoint}
+              mwTokenUrl={kunde?.mindworking_token_url}
+              mwSecret={kunde?.mindworking_secret}
+              mwShopNo={kunde?.mindworking_shopno}
+              toast={toast}
+            />
           </div>
 
           {sag.bbr_data && (sag.bbr_data.boligareal || sag.bbr_data.grundareal || sag.bbr_data.etager) && (
@@ -480,7 +365,7 @@ export default function SagDetalje() {
           <div className="modal">
             <div className="modal-title">Book freelancer<button className="modal-close" onClick={() => setShowBookModal(false)}>✕</button></div>
             {freelancere.length === 0
-              ? <div className="empty-state"><div className="empty-icon">📷</div>Ingen freelancere tilgængelige</div>
+              ? <div className="empty-state"><div className="empty-icon">📷</div>Ingen freelancere</div>
               : freelancere.map(f => (
                 <div key={f.id} onClick={() => bookFreelancer(f.id)}
                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, border: '.5px solid var(--brd)', borderRadius: 10, marginBottom: 8, cursor: 'pointer' }}
