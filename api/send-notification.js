@@ -106,6 +106,26 @@ export default async function handler(req, res) {
         ${btn(APP_URL + '/bookinger', 'Åben bookinger')}
       `)
     },
+    booking_afventer_selger: {
+      to: mægler?.email,
+      subject: `Din booking afventer svar fra sælger — ${mægler?.adresse}`,
+      html: base(`
+        ${heading('Booking på hold', mægler?.adresse)}
+        <p style="font-size:13px;color:${text};margin:0 0 4px">Hej ${mægler?.maegler_navn || ''},</p>
+        <p style="font-size:13px;color:${muted};margin:0 0 20px">Vi afventer i øjeblikket svar fra sælger for at aftale tidspunkt. Vi vender tilbage så snart vi har en dato.</p>
+        ${mægler?.bemærkning ? `
+          <div style="background:#fff8e1;border:1px solid #ffc107;padding:12px 16px;margin:16px 0;font-size:13px;color:${text}">
+            <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#856404;margin-bottom:6px">Bemærkning</div>
+            ${mægler.bemærkning}
+          </div>
+        ` : ''}
+        ${infoBlock([
+          ['Adresse', mægler?.adresse],
+        ])}
+        <p style="font-size:12px;color:${muted};margin-top:16px">Spørgsmål: dennis@vaniagraphics.dk</p>
+        <p style="font-size:11px;color:${muted};margin-top:24px">Dennis — VaniaGraphics</p>
+      `)
+    },
     booking_bekraeft: {
       to: mægler?.email,
       subject: `Booking bekræftet — ${mægler?.adresse}`,
