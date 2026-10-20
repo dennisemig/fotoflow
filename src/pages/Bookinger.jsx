@@ -7,6 +7,8 @@ export default function Bookinger() {
   const [bookinger, setBookinger] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('afventer')
+  const [holdDialog, setHoldDialog] = useState(null) // booking object
+  const [holdBemærkning, setHoldBemærkning] = useState('')
   const navigate = useNavigate()
   const { toasts, toast } = useToast()
 
@@ -78,6 +80,29 @@ export default function Bookinger() {
     fetchBookinger()
   }
 
+  async function sætPåHold(booking, bemærkning) {
+    await supabase.from('bookings').update({ status: 'afventer_selger', hold_bemærkning: bemærkning || null }).eq('id', booking.id)
+
+    await fetch('/api/send-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'booking_afventer_selger',
+        mægler: {
+          email: booking.maegler_email,
+          maegler_navn: booking.maegler_navn,
+          adresse: booking.adresse,
+          bemærkning: bemærkning || null,
+        }
+      })
+    }).catch(() => {})
+
+    setHoldDialog(null)
+    setHoldBemærkning('')
+    toast('Booking sat på hold — mægler er notificeret')
+    fetchBookinger()
+  }
+
   async function afvis(booking) {
     if (!confirm('Er du sikker på at du vil afvise denne booking?')) return
     await supabase.from('bookings').update({ status: 'afvist' }).eq('id', booking.id)
@@ -103,6 +128,7 @@ export default function Bookinger() {
 
   const statusBadge = s => ({
     afventer: <span className="badge badge-pending">Afventer</span>,
+    afventer_selger: <span className="badge" style={{ background: '#fff3cd', color: '#856404', border: '1px solid #ffc107' }}>På hold</span>,
     godkendt: <span className="badge badge-active">Godkendt</span>,
     afvist: <span className="badge badge-new">Afvist</span>
   }[s] || <span className="badge badge-pending">Afventer</span>)
@@ -122,9 +148,9 @@ export default function Bookinger() {
       </div>
 
       <div className="toolbar">
-        {['afventer', 'godkendt', 'afvist', 'alle'].map(f => (
-          <button key={f} className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter(f)}>
-            {f.charAt(0).toUpperCase() + f.slice(1)}
+        {[['afventer','Afventer'], ['afventer_selger','På hold'], ['godkendt','Godkendt'], ['afvist','Afvist'], ['alle','Alle']].map(([val, label]) => (
+          <button key={val} className={`btn btn-sm ${filter === val ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter(val)}>
+            {label}
           </button>
         ))}
       </div>
@@ -194,7 +220,24 @@ export default function Bookinger() {
                 </div>
               )}
 
+              {b.hold_bemærkning && (
+                <div style={{ background: '#fff8e1', border: '1px solid #ffc107', borderRadius: 6, padding: '8px 14px', fontSize: 13, marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, color: '#856404', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Bemærkning (sendt til mægler)</div>
+                  {b.hold_bemærkning}
+                </div>
+              )}
+
               {b.status === 'afventer' && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-green" onClick={() => godkend(b)}>✓ Godkend – opret sag</button>
+                  {b.kontakt_selger && (
+                    <button className="btn btn-outline" onClick={() => { setHoldDialog(b); setHoldBemærkning('') }}>⏸ Sæt på hold</button>
+                  )}
+                  <button className="btn btn-red" onClick={() => afvis(b)}>✕ Afvis</button>
+                </div>
+              )}
+
+              {b.status === 'afventer_selger' && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-green" onClick={() => godkend(b)}>✓ Godkend – opret sag</button>
                   <button className="btn btn-red" onClick={() => afvis(b)}>✕ Afvis</button>
@@ -210,6 +253,30 @@ export default function Bookinger() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* HOLD DIALOG */}
+      {holdDialog && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--card-bg, #fff)', borderRadius: 10, padding: 28, maxWidth: 440, width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Sæt på hold</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>{holdDialog.adresse}</div>
+            <label style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 6, fontWeight: 600 }}>
+              Bemærkning til mægler
+            </label>
+            <textarea
+              rows={4}
+              style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border, #ddd)', borderRadius: 6, fontSize: 13, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+              placeholder="fx: Sælger ønsker at blive kontaktet igen om 10 dage."
+              value={holdBemærkning}
+              onChange={e => setHoldBemærkning(e.target.value)}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button className="btn btn-primary" onClick={() => sætPåHold(holdDialog, holdBemærkning)}>Send til mægler</button>
+              <button className="btn btn-outline" onClick={() => setHoldDialog(null)}>Annuller</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
