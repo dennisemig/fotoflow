@@ -9,7 +9,7 @@ const border = '#c8c4be'
 const mono = "'Courier New', monospace"
 const serif = 'Georgia, serif'
 const text = '#1a1a1a'
-const muted = '#6b6b6b'
+const muted = '#3d3d3d'
 
 const field = {
   label: { display: 'block', fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: muted, marginBottom: 6 },
@@ -23,7 +23,7 @@ export default function Booking() {
   const [optagedeDatoer, setOptagedeDatoer] = useState([])
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({
-    adresse: '', dato: '', tidspunkt: '', kontakt_selger: false, selger_telefon: '', maegler_navn: '',
+    adresse: '', dato: '', tidspunkt: '', kontakt_selger: false, selger_navn: '', selger_telefon: '', maegler_navn: '',
     maegler_email: '', maegler_firma: '', sagsnummer: '', pakke_id: '', tillaeg: [], noter: ''
   })
   const [valgtPakke, setValgtPakke] = useState(null)
@@ -146,7 +146,7 @@ export default function Booking() {
     if (!form.maegler_email) { alert('Udfyld din email'); return }
     setSending(true)
     const { error } = await supabase.from('bookings').insert([{
-      adresse: form.adresse, dato: form.kontakt_selger ? null : form.dato, tidspunkt: form.kontakt_selger ? null : form.tidspunkt, kontakt_selger: form.kontakt_selger, selger_telefon: form.selger_telefon || null,
+      adresse: form.adresse, dato: form.kontakt_selger ? null : form.dato, tidspunkt: form.kontakt_selger ? null : form.tidspunkt, kontakt_selger: form.kontakt_selger, selger_navn: form.selger_navn || null, selger_telefon: form.selger_telefon || null,
       maegler_navn: form.maegler_navn, maegler_email: form.maegler_email,
       maegler_firma: form.maegler_firma, sagsnummer: form.sagsnummer, pakke: valgtPakke?.navn,
       tillaeg: form.tillaeg.map(id => tillaeg.find(t => t.id === id)?.navn).filter(Boolean),
@@ -240,14 +240,14 @@ export default function Booking() {
             {/* VALG: Book selv / Vania kontakter sælger */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
               <button onClick={() => set('kontakt_selger', false)} style={{
-                flex: 1, padding: '12px 8px', border: `1px solid ${!form.kontakt_selger ? text : border}`,
-                background: !form.kontakt_selger ? text : 'transparent', color: !form.kontakt_selger ? bg : muted,
-                fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', fontFamily: mono, cursor: 'pointer'
+                flex: 1, padding: '14px 8px', border: `2px solid ${!form.kontakt_selger ? text : '#888'}`,
+                background: !form.kontakt_selger ? text : 'transparent', color: !form.kontakt_selger ? bg : '#222',
+                fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', fontFamily: mono, cursor: 'pointer', fontWeight: !form.kontakt_selger ? 700 : 500
               }}>Book dato selv</button>
               <button onClick={() => { set('kontakt_selger', true); set('dato', ''); set('tidspunkt', '') }} style={{
-                flex: 1, padding: '12px 8px', border: `1px solid ${form.kontakt_selger ? text : border}`,
-                background: form.kontakt_selger ? text : 'transparent', color: form.kontakt_selger ? bg : muted,
-                fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', fontFamily: mono, cursor: 'pointer'
+                flex: 1, padding: '14px 8px', border: `2px solid ${form.kontakt_selger ? text : '#888'}`,
+                background: form.kontakt_selger ? text : 'transparent', color: form.kontakt_selger ? bg : '#222',
+                fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', fontFamily: mono, cursor: 'pointer', fontWeight: form.kontakt_selger ? 700 : 500
               }}>Vania kontakter sælger</button>
             </div>
 
@@ -255,6 +255,9 @@ export default function Booking() {
             {form.kontakt_selger && (
               <div style={{ marginBottom: 24 }}>
                 <div style={{ fontSize: 12, color: muted, marginBottom: 16, lineHeight: 1.7 }}>Vi kontakter sælger direkte og aftaler et tidspunkt. Du modtager bekræftelse så snart tid er aftalt.</div>
+                <label style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: muted, marginBottom: 6 }}>Sælgers navn</label>
+                <input style={{ width: '100%', padding: '10px 12px', border: `1px solid ${border}`, background: 'transparent', color: text, fontSize: 13, fontFamily: mono, boxSizing: 'border-box', marginBottom: 14 }}
+                  value={form.selger_navn} onChange={e => set('selger_navn', e.target.value)} placeholder="fx Mette Hansen" type="text" />
                 <label style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: muted, marginBottom: 6 }}>Sælgers telefonnummer</label>
                 <input style={{ width: '100%', padding: '10px 12px', border: `1px solid ${border}`, background: 'transparent', color: text, fontSize: 13, fontFamily: mono, boxSizing: 'border-box' }}
                   value={form.selger_telefon} onChange={e => set('selger_telefon', e.target.value)} placeholder="fx 12 34 56 78" type="tel" />
