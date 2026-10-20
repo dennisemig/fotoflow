@@ -46,15 +46,24 @@ export default function Booking() {
       .then(({ data }) => { if (data?.vaerdi) setArbejdstider(data.vaerdi) })
   }, [])
 
-  function getArbejdstiderForDag(dagIdx) {
-    if (!arbejdstider) return []
-    const dag = arbejdstider[dagIdx]
-    if (!dag || !dag.aktiv) return []
-    return dag.tider || []
-  }
-
   function tidTilMin(t) {
     const [h, m] = t.split(':').map(Number); return h * 60 + m
+  }
+
+  function minTilTid(m) {
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+  }
+
+  function getArbejdstiderForDag(dagIdx) {
+    if (!arbejdstider) return []
+    const dag = arbejdstider[String(dagIdx)]
+    if (!dag || !dag.aktiv) return []
+    // Generer tider fra fra/til med 30 min interval
+    const fra = tidTilMin(dag.fra)
+    const til = tidTilMin(dag.til)
+    const tider = []
+    for (let t = fra; t < til; t += 30) tider.push(minTilTid(t))
+    return tider
   }
 
   function getLedigeTider(dato) {
@@ -76,7 +85,6 @@ export default function Booking() {
 
   function erDagOptaget(dayStr) {
     const ugedag = new Date(dayStr + 'T12:00:00').getDay()
-    if (ugedag === 0) return true
     const alleTider = getArbejdstiderForDag(ugedag)
     if (alleTider.length === 0) return true
     return getLedigeTider(dayStr).length === 0
