@@ -152,11 +152,27 @@ export default function Bookinger() {
                 {statusBadge(b.status)}
               </div>
 
+              {b.kontakt_selger && (
+                <div style={{ background: '#1a1a1a', color: '#e8e4de', padding: '10px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 14 }}>
+                  ⚠️ Afventer tidspunkt — vi kontakter sælger
+                </div>
+              )}
+
               <div className="grid2" style={{ marginBottom: 14 }}>
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8, fontWeight: 600 }}>Ejendom & tid</div>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>📅 {b.dato ? new Date(b.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</div>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>⏰ kl. {b.tidspunkt || '—'}</div>
+                  {b.kontakt_selger ? (
+                    <>
+                      <div style={{ fontSize: 13, marginBottom: 4 }}>📅 —</div>
+                      <div style={{ fontSize: 13, marginBottom: 4 }}>👤 Sælger: <b>{b.selger_navn || '—'}</b></div>
+                      <div style={{ fontSize: 13, marginBottom: 4 }}>📞 <a href={`tel:${b.selger_telefon}`} style={{ color: 'var(--pr)' }}>{b.selger_telefon || '—'}</a></div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 13, marginBottom: 4 }}>📅 {b.dato ? new Date(b.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</div>
+                      <div style={{ fontSize: 13, marginBottom: 4 }}>⏰ kl. {b.tidspunkt || '—'}</div>
+                    </>
+                  )}
                   <div style={{ fontSize: 13, marginBottom: 4 }}>📦 {b.pakke || '—'}</div>
                   {b.sagsnummer && <div style={{ fontSize: 13, marginBottom: 4 }}>🔑 Sagsnr: <b>{b.sagsnummer}</b></div>}
                   {(b.tillaeg || []).length > 0 && (
