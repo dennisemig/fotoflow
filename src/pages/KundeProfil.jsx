@@ -11,7 +11,7 @@ export default function KundeProfil() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [saving, setSaving] = useState(false)
-  const [mwForm, setMwForm] = useState({ mindworking_endpoint: '', mindworking_token_url: '', mindworking_secret: '' })
+  const [mwForm, setMwForm] = useState({ mindworking_shopno: '', mindworking_endpoint: '', mindworking_token_url: '', mindworking_secret: '' })
   const [savingMw, setSavingMw] = useState(false)
   const { toasts, toast } = useToast()
 
@@ -20,6 +20,7 @@ export default function KundeProfil() {
       setKunde(data)
       setForm(data || {})
       setMwForm({
+        mindworking_shopno: data?.mindworking_shopno || '',
         mindworking_endpoint: data?.mindworking_endpoint || '',
         mindworking_token_url: data?.mindworking_token_url || '',
         mindworking_secret: data?.mindworking_secret || ''
@@ -42,6 +43,7 @@ export default function KundeProfil() {
   async function handleSaveMw() {
     setSavingMw(true)
     await supabase.from('kunder').update({
+      mindworking_shopno: mwForm.mindworking_shopno || null,
       mindworking_endpoint: mwForm.mindworking_endpoint || null,
       mindworking_token_url: mwForm.mindworking_token_url || null,
       mindworking_secret: mwForm.mindworking_secret || null
@@ -62,7 +64,7 @@ export default function KundeProfil() {
   const statusLabel = s => ({ ny: 'Ny', aktiv: 'Aktiv', afventer: 'Afventer', afsluttet: 'Afsluttet', leveret: 'Leveret' }[s] || 'Ny')
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', ny: 'new', afsluttet: 'done', leveret: 'leveret' }[s] || 'new')
 
-  const mwKonfigureret = kunde.mindworking_endpoint && kunde.mindworking_token_url && kunde.mindworking_secret
+  const mwKonfigureret = kunde.mindworking_shopno
 
   return (
     <div>
@@ -129,40 +131,46 @@ export default function KundeProfil() {
           <div className="section-hd">Mindworking</div>
 
           {mwKonfigureret && (
-            <div className="ok-box" style={{ marginBottom: 14 }}>✓ Mindworking er konfigureret</div>
+            <div className="ok-box" style={{ marginBottom: 14 }}>✓ Mindworking er konfigureret (Shop No: {kunde.mindworking_shopno})</div>
           )}
 
           <div className="form-group">
-            <label>API Endpoint</label>
+            <label>Shop No</label>
+            <input
+              value={mwForm.mindworking_shopno}
+              onChange={e => setMwForm(f => ({ ...f, mindworking_shopno: e.target.value }))}
+              placeholder="f.eks. N260142 eller N270192"
+            />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+              Findes på Mindworking-kontoret. Påkrævet for at sende billeder.
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>API Endpoint <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(valgfri — bruges kun hvis afdelingen har eget endpoint)</span></label>
             <input
               value={mwForm.mindworking_endpoint}
               onChange={e => setMwForm(f => ({ ...f, mindworking_endpoint: e.target.value }))}
-              placeholder="https://home.mindworking.eu/api/integrations/media/graphql/"
+              placeholder="https://nybolig.mindworking.eu/api/integrations/media/graphql/"
             />
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-              F.eks. nybolig.mindworking.eu eller home.mindworking.eu
-            </div>
           </div>
 
           <div className="form-group">
-            <label>Token URL</label>
+            <label>Token URL <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(valgfri)</span></label>
             <input
               value={mwForm.mindworking_token_url}
               onChange={e => setMwForm(f => ({ ...f, mindworking_token_url: e.target.value }))}
-              placeholder="https://iam.mindworking.eu/auth/realms/home/protocol/openid-connect/token"
+              placeholder="https://iam.mindworking.eu/auth/realms/nybolig/protocol/openid-connect/token"
             />
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-              F.eks. .../realms/nybolig/... eller .../realms/home/...
-            </div>
           </div>
 
           <div className="form-group">
-            <label>Client Secret</label>
+            <label>Client Secret <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(valgfri)</span></label>
             <input
               type="password"
               value={mwForm.mindworking_secret}
               onChange={e => setMwForm(f => ({ ...f, mindworking_secret: e.target.value }))}
-              placeholder="Din Mindworking client secret"
+              placeholder="Kun hvis afdelingen har egen secret"
             />
           </div>
 
