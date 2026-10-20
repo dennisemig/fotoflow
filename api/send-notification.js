@@ -81,11 +81,24 @@ export default async function handler(req, res) {
     },
     ny_booking: {
       to: process.env.RESEND_FROM,
-      subject: `Ny booking — ${mægler?.maegler_navn || 'mægler'} — ${mægler?.adresse}`,
+      subject: mægler?.kontakt_selger
+        ? `⚠️ Ring sælger — ${mægler?.adresse}`
+        : `Ny booking — ${mægler?.maegler_navn || 'mægler'} — ${mægler?.adresse}`,
       html: base(`
+        ${mægler?.kontakt_selger ? `
+          <div style="background:#1a1a1a;color:#e8e4de;padding:14px 18px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;margin-bottom:20px;text-align:center">
+            ⚠️ Afventer tidspunkt — kontakt sælger
+          </div>
+        ` : ''}
         ${heading('Indgående booking', mægler?.adresse)}
         ${infoBlock([
-          ['Dato', mægler?.dato + ' kl. ' + (mægler?.tidspunkt || '—')],
+          ...(mægler?.kontakt_selger ? [
+            ['Sælger', mægler?.selger_navn || '—'],
+            ['Sælger tlf', mægler?.selger_telefon || '—'],
+            ['Dato', '— (vi kontakter sælger)'],
+          ] : [
+            ['Dato', mægler?.dato + ' kl. ' + (mægler?.tidspunkt || '—')],
+          ]),
           ['Mægler', (mægler?.maegler_navn || '') + ' · ' + (mægler?.maegler_firma || '—')],
           ['Email', mægler?.maegler_email],
           ['Pakke', mægler?.pakke]
