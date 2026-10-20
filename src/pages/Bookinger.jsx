@@ -230,9 +230,7 @@ export default function Bookinger() {
               {b.status === 'afventer' && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-green" onClick={() => godkend(b)}>✓ Godkend – opret sag</button>
-                  {b.kontakt_selger && (
-                    <button className="btn btn-outline" onClick={() => { setHoldDialog(b); setHoldBemærkning('') }}>⏸ Sæt på hold</button>
-                  )}
+                  <button className="btn btn-outline" onClick={() => { setHoldDialog(b); setHoldBemærkning('') }}>⏸ Sæt på hold</button>
                   <button className="btn btn-red" onClick={() => afvis(b)}>✕ Afvis</button>
                 </div>
               )}
