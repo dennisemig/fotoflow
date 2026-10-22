@@ -200,6 +200,29 @@ export default function SagDetalje() {
                 </div>
               ))}
             </div>
+
+            {/* Pakke & tillæg fra booking */}
+            {(sag.pakke || (sag.tillaeg && sag.tillaeg.length > 0)) && (
+              <div style={{ borderTop: '.5px solid var(--brd)', paddingTop: 10, marginTop: 2, marginBottom: 10 }}>
+                {sag.pakke && (
+                  <div style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Pakke</div>
+                    <div style={{ fontWeight: 500 }}>📦 {sag.pakke}</div>
+                  </div>
+                )}
+                {sag.tillaeg && sag.tillaeg.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Tillæg</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {sag.tillaeg.map((t, i) => (
+                        <span key={i} style={{ background: 'var(--bg)', border: '.5px solid var(--brd)', borderRadius: 20, padding: '2px 10px', fontSize: 12 }}>➕ {t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <button className="btn btn-outline btn-sm" onClick={() => window.open(`https://maps.google.com?q=${encodeURIComponent(sag.adresse)}`)}>📍 Google Maps</button>
           </div>
 
