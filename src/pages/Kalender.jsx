@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
+import { gemKmForSag } from '../lib/km'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
 
@@ -217,7 +218,7 @@ function OpretSagModal({ dato, onClose, onSaved, toast }) {
   async function handleSave() {
     if (!form.adresse) { toast('Udfyld adresse', 'error'); return }
     setSaving(true)
-    const { error } = await supabase.from('sager').insert([{
+    const { data: sag, error } = await supabase.from('sager').insert([{
       adresse: form.adresse,
       dato: dato,
       tidspunkt: form.tidspunkt || null,
@@ -228,8 +229,9 @@ function OpretSagModal({ dato, onClose, onSaved, toast }) {
       maks_billeder: form.maks_billeder,
       noter: form.noter || null,
       status: 'ny'
-    }])
+    }]).select().single()
     if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
+    await gemKmForSag(sag.id, form.adresse)
     setSaving(false)
     onSaved()
   }

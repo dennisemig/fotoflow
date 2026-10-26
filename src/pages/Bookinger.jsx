@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
+import { gemKmForSag } from '../lib/km'
 
 export default function Bookinger() {
   const [bookinger, setBookinger] = useState([])
@@ -56,6 +57,9 @@ export default function Bookinger() {
     }]).select().single()
 
     if (error) { toast('Fejl ved oprettelse af sag: ' + error.message, 'error'); return }
+
+    // Beregn km til kørselsrapporten (i baggrunden)
+    gemKmForSag(sag.id, booking.adresse)
 
     // Opdater booking status
     await supabase.from('bookings').update({ status: 'godkendt', sag_id: sag.id }).eq('id', booking.id)
