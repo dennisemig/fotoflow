@@ -2,31 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
+import { beregnKm } from '../lib/km'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
 const BBR_TOKEN = 'CPbVQka4R26OfpgOBMBi3sb6DnN63UVWn3kieXz844B6WJ0lxXqR8UPbOrM0eFHJ7vFmav9bw7w5pLM5Pcnk9Ws9Xyusxb7Ze'
-
-async function getKoordinater(adresse) {
-  try {
-    const r = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`)
-    const d = await r.json()
-    if (d.length > 0) return { lng: d[0].x, lat: d[0].y }
-  } catch (e) {}
-  return null
-}
-
-async function beregnKm(fraAdresse, tilAdresse) {
-  try {
-    const [fra, til] = await Promise.all([getKoordinater(fraAdresse), getKoordinater(tilAdresse)])
-    if (!fra || !til) return null
-    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${fra.lng},${fra.lat};${til.lng},${til.lat}?overview=false`)
-    const d = await r.json()
-    if (d.code === 'Ok' && d.routes.length > 0) {
-      return Math.round(d.routes[0].distance / 1000 * 10) / 10
-    }
-  } catch (e) {}
-  return null
-}
 
 export default function Sager() {
   const [sager, setSager] = useState([])

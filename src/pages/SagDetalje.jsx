@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 import BilledeGalleri from './BilledeGalleri'
+import { gemKmForSag } from '../lib/km'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
 export default function SagDetalje() {
@@ -107,6 +108,8 @@ export default function SagDetalje() {
   async function saveEdit() {
     setSaving(true)
     await supabase.from('sager').update({ adresse: editForm.adresse, dato: editForm.dato, tidspunkt: editForm.tidspunkt || null, tidspunkt_slut: editForm.tidspunkt_slut || null, type: editForm.type, maks_billeder: editForm.maks_billeder, kunde_id: editForm.kunde_id || null, freelancer_id: editForm.freelancer_id || null }).eq('id', id)
+    // Ny adresse → ny km til kørselsrapporten
+    if (editForm.adresse !== sag.adresse) await gemKmForSag(id, editForm.adresse)
     setSaving(false); setEditing(false); fetchSag(); toast('✓ Sag opdateret')
   }
   async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); toast('✓ Noter gemt') }

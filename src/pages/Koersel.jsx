@@ -1,54 +1,93 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { gemKmForSag, hentStartadresse } from '../lib/km'
 
 const KM_TAKST = 3.79
+
+// Lokal dato som YYYY-MM-DD. toISOString() giver UTC, og i dansk tid rykker det
+// datoen en dag tilbage (fx 1. januar → 31. december), så sager falder uden for perioden.
+const lokalDato = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+const SIDE = 1000
 
 export default function Koersel() {
   const [sager, setSager] = useState([])
   const [freelancere, setFreelancere] = useState([])
-  const [fra, setFra] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0])
-  const [til, setTil] = useState(new Date().toISOString().split('T')[0])
+  const [fra, setFra] = useState(lokalDato(new Date(new Date().getFullYear(), 0, 1)))
+  const [til, setTil] = useState(lokalDato(new Date()))
   const [tab, setTab] = useState('self')
   const [loading, setLoading] = useState(true)
+  const [beregner, setBeregner] = useState(null) // { done, total } mens manglende km beregnes
+  const hentId = useRef(0)
   const navigate = useNavigate()
 
   useEffect(() => { fetchData() }, [fra, til])
 
   async function fetchData() {
+    // Kun det seneste kald må opdatere siden, så et langsomt svar for en gammel periode ikke overskriver
+    const mitId = ++hentId.current
+    const aktuel = () => mitId === hentId.current
     setLoading(true)
-    const { data } = await supabase
-      .from('sager')
-      .select('id, adresse, dato, status, km_distance, freelancer_id, kunde_id')
-      .gte('dato', fra)
-      .lte('dato', til)
-      .not('km_distance', 'is', null)
-      .order('dato', { ascending: false })
+    setBeregner(null)
+
+    // Hent alle sager i perioden, også dem uden km endnu (Supabase giver max 1000 rækker pr. kald)
+    let data = []
+    for (let side = 0; ; side++) {
+      const { data: rows, error } = await supabase
+        .from('sager')
+        .select('id, adresse, dato, status, km_distance, freelancer_id, kunde_id')
+        .gte('dato', fra)
+        .lte('dato', til)
+        .order('dato', { ascending: false })
+        .order('id')
+        .range(side * SIDE, side * SIDE + SIDE - 1)
+      if (error) { console.error('Kørsel fejl:', error); break }
+      data = data.concat(rows || [])
+      if (!rows || rows.length < SIDE) break
+    }
+    if (!aktuel()) return
 
     // Hent kundenavne
-    const kundeIds = [...new Set((data || []).filter(s => s.kunde_id).map(s => s.kunde_id))]
+    const kundeIds = [...new Set(data.filter(s => s.kunde_id).map(s => s.kunde_id))]
     let kundeMap = {}
     if (kundeIds.length > 0) {
       const { data: k } = await supabase.from('kunder').select('id, navn').in('id', kundeIds)
       if (k) k.forEach(x => kundeMap[x.id] = x)
     }
 
-    setSager((data || []).map(s => ({ ...s, kunde: kundeMap[s.kunde_id] || null })))
-
     const { data: fl } = await supabase.from('freelancere').select('id, navn').eq('aktiv', true)
+    if (!aktuel()) return
+    setSager(data.map(s => ({ ...s, kunde: kundeMap[s.kunde_id] || null })))
     setFreelancere(fl || [])
     setLoading(false)
+
+    // Sager oprettet via booking/kalender (eller hvor beregningen fejlede) har ingen km. Beregn og gem dem nu.
+    const mangler = data.filter(s => s.km_distance == null && s.adresse)
+    if (mangler.length === 0) return
+    const startadresse = await hentStartadresse()
+    if (!startadresse || !aktuel()) return
+    setBeregner({ done: 0, total: mangler.length })
+    for (let i = 0; i < mangler.length; i++) {
+      if (!aktuel()) return
+      const km = await gemKmForSag(mangler[i].id, mangler[i].adresse, startadresse)
+      if (!aktuel()) return
+      if (km != null) setSager(prev => prev.map(s => s.id === mangler[i].id ? { ...s, km_distance: km } : s))
+      setBeregner({ done: i + 1, total: mangler.length })
+    }
+    setBeregner(null)
   }
 
   const setPeriode = v => {
     const now = new Date()
-    if (v === 'denne-maaned') { setFra(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]); setTil(now.toISOString().split('T')[0]) }
-    else if (v === 'sidste-maaned') { setFra(new Date(now.getFullYear(), now.getMonth()-1, 1).toISOString().split('T')[0]); setTil(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]) }
-    else if (v === 'dette-kvartal') { setFra(new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1).toISOString().split('T')[0]); setTil(now.toISOString().split('T')[0]) }
-    else if (v === 'dette-aar') { setFra(new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]); setTil(now.toISOString().split('T')[0]) }
+    if (v === 'denne-maaned') { setFra(lokalDato(new Date(now.getFullYear(), now.getMonth(), 1))); setTil(lokalDato(now)) }
+    else if (v === 'sidste-maaned') { setFra(lokalDato(new Date(now.getFullYear(), now.getMonth()-1, 1))); setTil(lokalDato(new Date(now.getFullYear(), now.getMonth(), 0))) }
+    else if (v === 'dette-kvartal') { setFra(lokalDato(new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1))); setTil(lokalDato(now)) }
+    else if (v === 'dette-aar') { setFra(lokalDato(new Date(now.getFullYear(), 0, 1))); setTil(lokalDato(now)) }
   }
 
   const mineSager = sager.filter(s => !s.freelancer_id)
+  const manglerKm = mineSager.filter(s => s.km_distance == null)
   const totalKm = mineSager.reduce((a, s) => a + (parseFloat(s.km_distance) || 0), 0)
   const totalTurRetur = Math.round(totalKm * 2 * 10) / 10
   const fradrag = Math.round(totalTurRetur * KM_TAKST)
@@ -91,6 +130,10 @@ export default function Koersel() {
         <button className="btn btn-green btn-sm" onClick={() => window.print()}>⬇ Eksporter PDF</button>
       </div>
 
+      {beregner && (
+        <div className="info-box" style={{ marginBottom: 16 }}>⏳ Beregner km for sager uden kørsel ({beregner.done}/{beregner.total})...</div>
+      )}
+
       {tab === 'self' && (
         <>
           {loading ? (
@@ -122,6 +165,10 @@ export default function Koersel() {
                 ))}
               </div>
 
+              {manglerKm.length > 0 && !beregner && (
+                <div className="info-box" style={{ marginBottom: 16 }}>⚠ {manglerKm.length} {manglerKm.length === 1 ? 'sag mangler' : 'sager mangler'} km og tælles ikke med i fradraget. Tjek at din startadresse er sat under Indstillinger, og at sagens adresse er korrekt.</div>
+              )}
+
               <div className="card">
                 <div className="section-hd">Kørsel pr. sag</div>
                 <div style={{ overflowX: 'auto' }}>
@@ -139,9 +186,15 @@ export default function Koersel() {
                             <td>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
                             <td>{s.adresse}</td>
                             <td>{s.kunde?.navn || '—'}</td>
-                            <td>{km.toFixed(1)} km</td>
-                            <td>{tr} km</td>
-                            <td style={{ color: 'var(--grn)', fontWeight: 600 }}>{fr.toLocaleString('da-DK')} kr</td>
+                            {s.km_distance == null ? (
+                              <td colSpan={3} style={{ color: 'var(--muted)' }}>{beregner ? 'Beregner...' : 'Km kunne ikke beregnes – tjek adressen'}</td>
+                            ) : (
+                              <>
+                                <td>{km.toFixed(1)} km</td>
+                                <td>{tr} km</td>
+                                <td style={{ color: 'var(--grn)', fontWeight: 600 }}>{fr.toLocaleString('da-DK')} kr</td>
+                              </>
+                            )}
                           </tr>
                         )
                       })}
