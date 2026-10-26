@@ -35,6 +35,7 @@ export default function Koersel() {
   const [ruter, setRuter] = useState({}) // dato → km pr. ben for dage med flere sager
   const [beregnerRuter, setBeregnerRuter] = useState(null) // { done, total } mens ruter beregnes
   const [profil, setProfil] = useState(null)
+  const [proevStatus, setProevStatus] = useState(null) // tekst efter 'Prøv igen'
   const hentId = useRef(0)
   const navigate = useNavigate()
 
@@ -54,6 +55,7 @@ export default function Koersel() {
     setLoading(true)
     setBeregner(null)
     setRuter({})
+    setProevStatus(null)
     setBeregnerRuter(null)
 
     // Hent alle sager i perioden, også dem uden km endnu (Supabase giver max 1000 rækker pr. kald)
@@ -111,26 +113,35 @@ export default function Koersel() {
   }
 
   async function beregnRuter(dageListe, startadresse, aktuel) {
-    if (dageListe.length === 0) return
+    if (dageListe.length === 0) return []
     setBeregnerRuter({ done: 0, total: dageListe.length })
+    const resultater = []
     for (let i = 0; i < dageListe.length; i++) {
       const dag = dageListe[i]
       const rute = await beregnRute(startadresse, dag.sager.map(s => s.adresse))
-      if (!aktuel()) return
+      if (!aktuel()) return null
+      resultater.push(rute)
       setRuter(prev => ({ ...prev, [dag.dato]: rute }))
       setBeregnerRuter({ done: i + 1, total: dageListe.length })
     }
     setBeregnerRuter(null)
+    return resultater
   }
 
   // Prøv igen for dage hvor ruten eller en adresse fejlede (fx hvis kortservicen var overbelastet)
   async function proevIgen() {
     const mitId = hentId.current
+    setProevStatus('Henter startadresse...')
     const startadresse = await hentStartadresse()
-    if (!startadresse) return
+    if (!startadresse) { setProevStatus('Din startadresse mangler under Indstillinger.'); return }
     const fejlede = grupperDage(sager.filter(s => !s.freelancer_id))
-      .filter(d => d.sager.length > 1 && ruter[d.dato] && (ruter[d.dato].fejl || ruter[d.dato].med.includes(false)))
-    await beregnRuter(fejlede, startadresse, () => mitId === hentId.current)
+      .filter(d => d.sager.length > 1 && (!ruter[d.dato] || ruter[d.dato].fejl || ruter[d.dato].med.includes(false)))
+    if (fejlede.length === 0) { setProevStatus('Der er ingen dage at prøve igen.'); return }
+    setProevStatus(null)
+    const resultater = await beregnRuter(fejlede, startadresse, () => mitId === hentId.current)
+    if (!resultater) return
+    const ok = resultater.filter(r => r && !r.fejl && r.med.every(Boolean)).length
+    setProevStatus(`Færdig: ${ok} af ${fejlede.length} dage blev beregnet som samlet rute.`)
   }
 
   const setPeriode = v => {
@@ -256,6 +267,9 @@ export default function Koersel() {
                 <div className="info-box" style={{ marginBottom: 16 }}>⚠ {manglerKm.length} {manglerKm.length === 1 ? 'sag mangler' : 'sager mangler'} km og tælles ikke med i fradraget. Tjek at din startadresse er sat under Indstillinger, og at sagens adresse er korrekt.</div>
               )}
 
+              {proevStatus && !beregnerRuter && (
+                <div className="info-box" style={{ marginBottom: 16 }}>{proevStatus}</div>
+              )}
               {beregnerRuter && (
                 <div className="info-box" style={{ marginBottom: 16 }}>⏳ Beregner ruter for dage med flere sager ({beregnerRuter.done}/{beregnerRuter.total})...</div>
               )}
@@ -267,7 +281,7 @@ export default function Koersel() {
                     {separatAarsag('rute').length > 0 && <li>{separatAarsag('rute').length} sager: ruteberegningen svarede ikke (kortservicen kan være overbelastet).</li>}
                     {ikkeFundet.length > 0 && <li>{separatAarsag('adresse').length} sager: adressen blev ikke fundet på kortet ({ikkeFundet.slice(0, 6).join(' · ')}{ikkeFundet.length > 6 ? ' …' : ''}).</li>}
                   </ul>
-                  <button className="btn btn-outline btn-sm" onClick={proevIgen}>↻ Prøv igen</button>
+                  <button className="btn btn-outline btn-sm" onClick={proevIgen} disabled={!!proevStatus && proevStatus.startsWith('Henter')}>↻ Prøv igen</button>
                 </div>
               )}
 
