@@ -2,7 +2,12 @@ import { supabase } from './supabase'
 
 // DAWA (api.dataforsyningen.dk) lukkede 1. oktober 2026, så adresser slås op i OpenStreetMap.
 // Nominatim tillader max 1 kald i sekundet, så kaldene køres efter hinanden med pause.
-const koordinatCache = new Map()
+// Koordinater gemmes også i browseren, så hver adresse kun slås op én gang
+const CACHE_KEY = 'fotoflow_koordinater'
+const koordinatCache = new Map(Object.entries((() => { try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || {} } catch (e) { return {} } })()))
+function gemCache() {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(koordinatCache))) } catch (e) {}
+}
 let naesteKald = Promise.resolve()
 
 function iKoe(fn) {
@@ -43,7 +48,7 @@ async function getKoordinater(adresse) {
     try { res = await photon(q) } catch (e) {}
     if (res) break
   }
-  if (res) koordinatCache.set(noegle, res)
+  if (res) { koordinatCache.set(noegle, res); gemCache() }
   return res
 }
 
@@ -58,6 +63,25 @@ export async function beregnKm(fraAdresse, tilAdresse) {
     const d = await r.json()
     if (d.code === 'Ok' && d.routes.length > 0) {
       return Math.round(d.routes[0].distance / 1000 * 10) / 10
+    }
+  } catch (e) {}
+  return null
+}
+
+// Rute gennem adresserne i rækkefølge (fx hjem → sag 1 → sag 2 → hjem).
+// Returnerer km for hvert ben (adresser.length - 1), eller null hvis en adresse ikke kan findes.
+export async function beregnRute(adresser) {
+  try {
+    const punkter = []
+    for (const a of adresser) {
+      const k = await getKoordinater(a)
+      if (!k) return null
+      punkter.push(`${k.lng},${k.lat}`)
+    }
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${punkter.join(';')}?overview=false`)
+    const d = await r.json()
+    if (d.code === 'Ok' && d.routes.length > 0) {
+      return d.routes[0].legs.map(l => Math.round(l.distance / 1000 * 10) / 10)
     }
   } catch (e) {}
   return null
