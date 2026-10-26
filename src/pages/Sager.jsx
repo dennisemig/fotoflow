@@ -166,12 +166,13 @@ function OpretSagModal({ onClose, onSaved, toast }) {
         let grundareal = null, etager = null
         if (d3 && d3.length > 0) { grundareal = d3[0].byg041BebyggetAreal || null; etager = d3[0].byg054AntalEtager || null }
         setBbr({ adresseId, adgAdrId, boligareal, grundareal, etager })
-        if (startadresse) {
-          const km = await beregnKm(startadresse, adresse)
-          if (km) setKmInfo({ km, tur_retur: Math.round(km * 2 * 10) / 10 })
-        }
       }
-    } catch (e) { console.error('BBR/km fejl:', e) }
+    } catch (e) { console.error('BBR fejl:', e) }
+    // Km uafhængigt af BBR-opslaget, så det virker selvom adresseopslaget ovenfor fejler
+    if (startadresse) {
+      const km = await beregnKm(startadresse, adresse)
+      if (km) setKmInfo({ km, tur_retur: Math.round(km * 2 * 10) / 10 })
+    }
     setBbrLoading(false)
   }
 
