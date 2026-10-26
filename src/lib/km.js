@@ -16,8 +16,13 @@ function iKoe(fn) {
   return kald
 }
 
+const vent = ms => new Promise(r => setTimeout(r, ms))
+
 async function nominatim(q) {
-  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=dk&limit=1&q=${encodeURIComponent(q)}`)
+  let r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=dk&limit=1&q=${encodeURIComponent(q)}`)
+  // Ved for mange kald (429) venter vi og prøver én gang til
+  if (r.status === 429) { await vent(5000); r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=dk&limit=1&q=${encodeURIComponent(q)}`) }
+  if (!r.ok) throw new Error(`Nominatim ${r.status}`)
   const d = await r.json()
   if (d.length > 0) return { lng: parseFloat(d[0].lon), lat: parseFloat(d[0].lat) }
   return null
@@ -25,6 +30,7 @@ async function nominatim(q) {
 
 async function photon(q) {
   const r = await fetch(`https://photon.komoot.io/api/?limit=1&bbox=7.9,54.5,15.3,57.8&q=${encodeURIComponent(q)}`)
+  if (!r.ok) throw new Error(`Photon ${r.status}`)
   const d = await r.json()
   const c = d.features?.[0]?.geometry?.coordinates
   if (c) return { lng: c[0], lat: c[1] }
@@ -76,14 +82,23 @@ function iRuteKoe(fn) {
   return kald
 }
 
+// To offentlige OSRM-servere; begge begrænser antal kald, så der prøves flere gange med stigende pause
+const RUTESERVERE = [
+  'https://router.project-osrm.org/route/v1/driving',
+  'https://routing.openstreetmap.de/routed-car/route/v1/driving',
+]
+
 async function osrmRute(punkter) {
-  for (let forsoeg = 0; forsoeg < 2; forsoeg++) {
-    try {
-      const r = await iRuteKoe(() => fetch(`https://router.project-osrm.org/route/v1/driving/${punkter.join(';')}?overview=false`))
-      const d = await r.json()
-      if (d.code === 'Ok' && d.routes.length > 0) return d.routes[0].legs.map(l => Math.round(l.distance / 1000 * 10) / 10)
-    } catch (e) {}
-    await new Promise(r => setTimeout(r, 2000))
+  for (const pause of [0, 3000, 8000]) {
+    if (pause) await vent(pause)
+    for (const server of RUTESERVERE) {
+      try {
+        const r = await iRuteKoe(() => fetch(`${server}/${punkter.join(';')}?overview=false`))
+        if (!r.ok) continue
+        const d = await r.json()
+        if (d.code === 'Ok' && d.routes.length > 0) return d.routes[0].legs.map(l => Math.round(l.distance / 1000 * 10) / 10)
+      } catch (e) {}
+    }
   }
   return null
 }
@@ -93,24 +108,24 @@ function hentRuteCache() { try { return JSON.parse(localStorage.getItem(RUTE_KEY
 
 // Rute hjem → stop 1 → stop 2 → … → hjem.
 // Stop der ikke kan findes på kortet springes over (med[i] = false).
-// Returnerer { med, ben } hvor ben er km for hvert ben mellem de medtagne stop, eller null.
+// Returnerer { med, ben } ved succes, ellers { fejl: 'start' | 'rute', med }. Kun succes caches.
 export async function beregnRute(startadresse, stop) {
   const noegle = [startadresse, ...stop].join('|').toLowerCase()
   const cache = hentRuteCache()
   if (cache[noegle]) return cache[noegle]
   const hjem = await getKoordinater(startadresse)
-  if (!hjem) return null
+  if (!hjem) return { fejl: 'start', med: stop.map(() => false) }
   const med = []
   const punkter = [`${hjem.lng},${hjem.lat}`]
   for (const a of stop) {
-    const k = await getKoordinater(a)
+    const k = a ? await getKoordinater(a) : null
     med.push(!!k)
     if (k) punkter.push(`${k.lng},${k.lat}`)
   }
-  if (punkter.length === 1) return null
+  if (punkter.length === 1) return { med, ben: [] }
   punkter.push(`${hjem.lng},${hjem.lat}`)
   const ben = await osrmRute(punkter)
-  if (!ben) return null
+  if (!ben) return { fejl: 'rute', med }
   const res = { med, ben }
   try { localStorage.setItem(RUTE_KEY, JSON.stringify({ ...hentRuteCache(), [noegle]: res })) } catch (e) {}
   return res

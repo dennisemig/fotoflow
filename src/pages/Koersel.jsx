@@ -33,7 +33,7 @@ export default function Koersel() {
   const [loading, setLoading] = useState(true)
   const [beregner, setBeregner] = useState(null) // { done, total } mens manglende km beregnes
   const [ruter, setRuter] = useState({}) // dato → km pr. ben for dage med flere sager
-  const [beregnerRuter, setBeregnerRuter] = useState(false)
+  const [beregnerRuter, setBeregnerRuter] = useState(null) // { done, total } mens ruter beregnes
   const [profil, setProfil] = useState(null)
   const hentId = useRef(0)
   const navigate = useNavigate()
@@ -54,7 +54,7 @@ export default function Koersel() {
     setLoading(true)
     setBeregner(null)
     setRuter({})
-    setBeregnerRuter(false)
+    setBeregnerRuter(null)
 
     // Hent alle sager i perioden, også dem uden km endnu (Supabase giver max 1000 rækker pr. kald)
     let data = []
@@ -89,7 +89,8 @@ export default function Koersel() {
 
     // Sager oprettet via booking/kalender (eller hvor beregningen fejlede) har ingen km. Beregn og gem dem nu.
     const mangler = data.filter(s => s.km_distance == null && s.adresse)
-    const flereSager = grupperDage(data.filter(s => !s.freelancer_id && s.adresse)).filter(d => d.sager.length > 1)
+    // Samme gruppering som visningen nedenfor, så rute.med[i] passer til dagens i'te sag
+    const flereSager = grupperDage(data.filter(s => !s.freelancer_id)).filter(d => d.sager.length > 1)
     if (mangler.length === 0 && flereSager.length === 0) return
     const startadresse = await hentStartadresse()
     if (!startadresse || !aktuel()) return
@@ -106,14 +107,30 @@ export default function Koersel() {
     }
 
     // Dage med flere sager køres som én rute: hjem → sag 1 → sag 2 → … → hjem
-    if (flereSager.length === 0) return
-    setBeregnerRuter(true)
-    for (const dag of flereSager) {
+    await beregnRuter(flereSager, startadresse, aktuel)
+  }
+
+  async function beregnRuter(dageListe, startadresse, aktuel) {
+    if (dageListe.length === 0) return
+    setBeregnerRuter({ done: 0, total: dageListe.length })
+    for (let i = 0; i < dageListe.length; i++) {
+      const dag = dageListe[i]
       const rute = await beregnRute(startadresse, dag.sager.map(s => s.adresse))
       if (!aktuel()) return
       setRuter(prev => ({ ...prev, [dag.dato]: rute }))
+      setBeregnerRuter({ done: i + 1, total: dageListe.length })
     }
-    setBeregnerRuter(false)
+    setBeregnerRuter(null)
+  }
+
+  // Prøv igen for dage hvor ruten eller en adresse fejlede (fx hvis kortservicen var overbelastet)
+  async function proevIgen() {
+    const mitId = hentId.current
+    const startadresse = await hentStartadresse()
+    if (!startadresse) return
+    const fejlede = grupperDage(sager.filter(s => !s.freelancer_id))
+      .filter(d => d.sager.length > 1 && ruter[d.dato] && (ruter[d.dato].fejl || ruter[d.dato].med.includes(false)))
+    await beregnRuter(fejlede, startadresse, () => mitId === hentId.current)
   }
 
   const setPeriode = v => {
@@ -133,18 +150,19 @@ export default function Koersel() {
   const dage = grupperDage(mineSager).map(dag => {
     const flere = dag.sager.length > 1
     const rute = flere ? ruter[dag.dato] : null
-    const antalMed = rute ? rute.med.filter(Boolean).length : 0
+    const antalMed = rute && !rute.fejl ? rute.med.filter(Boolean).length : 0
     let j = 0
     const rækker = dag.sager.map((s, i) => {
       if (flere && rute === undefined && beregnerRuter) return { ...s, km: null, venter: true }
-      if (rute && rute.med[i]) {
+      if (rute && !rute.fejl && rute.med[i]) {
         const først = j === 0, sidst = j === antalMed - 1
         const km = rund(rute.ben[j] + (sidst ? rute.ben[j + 1] : 0))
         j++
         return { ...s, km, strækning: `${først ? 'Hjem' : 'Forrige sag'} → her${sidst ? ' → hjem' : ''}` }
       }
       if (s.km_distance == null) return { ...s, km: null }
-      return { ...s, km: rund(parseFloat(s.km_distance) * 2), strækning: flere ? 'Separat tur hjemmefra' : 'Hjem → her → hjem', separat: flere }
+      const aarsag = !flere ? null : rute?.fejl === 'start' ? 'start' : rute?.fejl === 'rute' ? 'rute' : 'adresse'
+      return { ...s, km: rund(parseFloat(s.km_distance) * 2), strækning: flere ? 'Separat tur hjemmefra' : 'Hjem → her → hjem', separat: flere, aarsag }
     })
     return { ...dag, rækker, ture: dagensTure(dag.dato, rækker, rute) }
   })
@@ -152,6 +170,8 @@ export default function Koersel() {
   const totalKm = rund(rækker.reduce((a, s) => a + (s.km || 0), 0))
   const fradrag = Math.round(totalKm * KM_TAKST)
   const separateSager = rækker.filter(s => s.separat).length
+  const separatAarsag = a => rækker.filter(s => s.aarsag === a)
+  const ikkeFundet = [...new Set(separatAarsag('adresse').map(s => s.adresse))]
 
   // Kørebogen vises ældste dag først, som i en almindelig kørebog
   const ture = [...dage].reverse().flatMap(d => d.ture)
@@ -237,10 +257,18 @@ export default function Koersel() {
               )}
 
               {beregnerRuter && (
-                <div className="info-box" style={{ marginBottom: 16 }}>⏳ Beregner ruter for dage med flere sager...</div>
+                <div className="info-box" style={{ marginBottom: 16 }}>⏳ Beregner ruter for dage med flere sager ({beregnerRuter.done}/{beregnerRuter.total})...</div>
               )}
               {separateSager > 0 && !beregnerRuter && (
-                <div className="info-box" style={{ marginBottom: 16 }}>* {separateSager} {separateSager === 1 ? 'sag' : 'sager'} på dage med flere opgaver kunne ikke indgå i dagens rute (typisk fordi adressen ikke blev fundet på kortet). De er regnet som en separat tur hjemmefra. Ret adressen på sagen, hvis det er en fejl.</div>
+                <div className="info-box" style={{ marginBottom: 16 }}>
+                  * {separateSager} {separateSager === 1 ? 'sag' : 'sager'} på dage med flere opgaver kunne ikke indgå i dagens rute og er regnet som en separat tur hjemmefra:
+                  <ul style={{ margin: '6px 0 6px 18px' }}>
+                    {separatAarsag('start').length > 0 && <li>Din startadresse kunne ikke findes på kortet. Tjek den under Indstillinger.</li>}
+                    {separatAarsag('rute').length > 0 && <li>{separatAarsag('rute').length} sager: ruteberegningen svarede ikke (kortservicen kan være overbelastet).</li>}
+                    {ikkeFundet.length > 0 && <li>{separatAarsag('adresse').length} sager: adressen blev ikke fundet på kortet ({ikkeFundet.slice(0, 6).join(' · ')}{ikkeFundet.length > 6 ? ' …' : ''}).</li>}
+                  </ul>
+                  <button className="btn btn-outline btn-sm" onClick={proevIgen}>↻ Prøv igen</button>
+                </div>
               )}
 
               <div className="card">

@@ -12,7 +12,7 @@ export function dagensTure(dato, rækker, rute) {
   const stop = s => ({ navn: s.kunde?.navn || 'Fotoopgave', adresse: s.adresse })
   const formaal = s => `Fotografering${s.kunde?.navn ? ' – ' + s.kunde.navn : ''}`
   const ture = []
-  const iRute = rute ? rækker.filter((s, i) => rute.med[i] && s.km != null) : []
+  const iRute = rute && !rute.fejl ? rækker.filter((s, i) => rute.med[i] && s.km != null) : []
   if (iRute.length > 0) {
     iRute.forEach((s, k) => {
       ture.push({ dato, fra: k === 0 ? hjem : stop(iRute[k - 1]), til: stop(s), formaal: formaal(s), km: rute.ben[k] })
