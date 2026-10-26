@@ -19,6 +19,7 @@ const DEFAULT_ARBEJDSTIDER = {
 export default function Indstillinger() {
   const { profile, refreshProfile } = useAuth()
   const [userId, setUserId] = useState(null)
+  const [userEmail, setUserEmail] = useState('')
   const [form, setForm] = useState({ full_name: '', telefon: '', startadresse: '' })
   const [arbejdstider, setArbejdstider] = useState(DEFAULT_ARBEJDSTIDER)
   const [saving, setSaving] = useState(false)
@@ -37,7 +38,9 @@ export default function Indstillinger() {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       setUserId(user.id)
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      setUserEmail(user.email || '')
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (error) toast('Kunne ikke hente profilen: ' + error.message, 'error')
       if (data) setForm({ full_name: data.full_name || '', telefon: data.telefon || '', startadresse: data.startadresse || '' })
     }
   }
@@ -50,12 +53,19 @@ export default function Indstillinger() {
   async function saveProfil() {
     if (!userId) { toast('Ikke logget ind', 'error'); return }
     setSaving(true)
-    const { error } = await supabase.from('profiles').update({
-      full_name: form.full_name, telefon: form.telefon, startadresse: form.startadresse
-    }).eq('id', userId)
-    if (error) { toast('Fejl: ' + error.message, 'error'); setSaving(false); return }
+    const felter = { full_name: form.full_name, telefon: form.telefon, startadresse: form.startadresse.trim() }
+    // .select() fortæller om rækken faktisk blev ændret; uden adgang (eller uden profilrække) giver update ingen fejl
+    let { data, error } = await supabase.from('profiles').update(felter).eq('id', userId).select('id, startadresse')
+    if (!error && (!data || data.length === 0)) {
+      ({ data, error } = await supabase.from('profiles').upsert({ id: userId, email: userEmail, ...felter }).select('id, startadresse'))
+    }
     setSaving(false)
+    if (error) { toast('Profilen blev ikke gemt: ' + error.message, 'error'); return }
+    if (!data || data.length === 0 || (data[0].startadresse || '') !== felter.startadresse) {
+      toast('Profilen blev ikke gemt (databasen afviste ændringen)', 'error'); return
+    }
     toast('✓ Profil gemt')
+    refreshProfile?.()
   }
 
   async function saveArbejdstider() {
@@ -102,7 +112,7 @@ export default function Indstillinger() {
         <div className="card">
           <div className="section-hd">Profil</div>
           <div className="form-group"><label>Navn</label><input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} /></div>
-          <div className="form-group"><label>Email</label><input value={profile?.email || ''} disabled style={{ opacity: .7 }} /></div>
+          <div className="form-group"><label>Email</label><input value={userEmail || profile?.email || ''} disabled style={{ opacity: .7 }} /></div>
           <div className="form-group"><label>Telefon</label><input value={form.telefon} onChange={e => setForm(f => ({ ...f, telefon: e.target.value }))} placeholder="+45 xx xx xx xx" /></div>
           <div className="form-group"><label>Startadresse (bruges til km-beregning)</label><input value={form.startadresse} onChange={e => setForm(f => ({ ...f, startadresse: e.target.value }))} placeholder="Din hjemmeadresse..." /></div>
           <button className="btn btn-primary btn-sm" onClick={saveProfil} disabled={saving}>{saving ? 'Gemmer...' : 'Gem profil'}</button>
