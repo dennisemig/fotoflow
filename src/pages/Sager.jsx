@@ -5,8 +5,6 @@ import { useToast, ToastContainer } from '../hooks/useToast'
 import { beregnKm } from '../lib/km'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
-// Offentlig token fra Adressevælgerens dokumentation (brugerstyring er ikke lanceret endnu)
-const ADRESSEVAELGER_TOKEN = 'adressevaelger123'
 const BBR_TOKEN = 'CPbVQka4R26OfpgOBMBi3sb6DnN63UVWn3kieXz844B6WJ0lxXqR8UPbOrM0eFHJ7vFmav9bw7w5pLM5Pcnk9Ws9Xyusxb7Ze'
 
 export default function Sager() {
@@ -134,7 +132,6 @@ function OpretSagModal({ onClose, onSaved, toast }) {
   const [freelancere, setFreelancere] = useState([])
   const [bbr, setBbr] = useState(null)
   const [bbrLoading, setBbrLoading] = useState(false)
-  const [bbrFejl, setBbrFejl] = useState(null)
   const [saving, setSaving] = useState(false)
   const [kmInfo, setKmInfo] = useState(null)
   const [startadresse, setStartadresse] = useState('')
@@ -154,38 +151,23 @@ function OpretSagModal({ onClose, onSaved, toast }) {
   async function lookupBBRogKm(adresse) {
     if (adresse.length < 6) return
     setBbrLoading(true)
-    setBbrFejl(null)
-    // Henter JSON og giver en læsbar fejl med HTTP-status, så det kan ses hvilket opslag der fejler
-    const hent = async (navn, url) => {
-      let r
-      try { r = await fetch(url) } catch (e) { throw new Error(`${navn}: kunne ikke kontaktes (${e.message})`) }
-      const tekst = await r.text()
-      if (!r.ok) throw new Error(`${navn}: HTTP ${r.status} ${tekst.slice(0, 150)}`)
-      try { return JSON.parse(tekst) } catch (e) { throw new Error(`${navn}: uventet svar ${tekst.slice(0, 150)}`) }
-    }
     try {
-      // DAWA er lukket (1. okt 2026). Adresse-id og husnummer-id findes nu via Klimadatastyrelsens Adressevælger.
-      const d1 = await hent('Adressevælger', `https://adressevaelger.dk/adresser/soeg?tekst=${encodeURIComponent(adresse)}&maksimum=5&token=${ADRESSEVAELGER_TOKEN}`)
-      const fund = (d1?.fund || []).find(f => f.type === 'adresse' && f.husnummerId) || (d1?.fund || []).find(f => f.id && f.husnummerId)
-      if (!fund) throw new Error(`Adressevælger: adressen blev ikke fundet${d1?.beskrivelse ? ' (' + d1.beskrivelse + ')' : ''}`)
-      const adresseId = fund.id
-      const adgAdrId = fund.husnummerId
-      const d2 = await hent('BBR enhed', `https://services.datafordeler.dk/BBR/BBRPublic/1/rest/enhed?AdresseIdentificerer=${adresseId}&MedDybde=true&token=${BBR_TOKEN}`)
-      let boligareal = null
-      if (Array.isArray(d2) && d2.length > 0) boligareal = d2[0].enh020EnhedensAreal || d2[0].enh021ArealTilBeboelse || null
-      // Bygning slås op på DAR-husnummer; AdresseIdentificerer er beholdt som reserve
-      let d3 = await hent('BBR bygning', `https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning?Husnummer=${adgAdrId}&MedDybde=true&token=${BBR_TOKEN}`).catch(() => null)
-      if (!Array.isArray(d3) || d3.length === 0) {
-        d3 = await hent('BBR bygning', `https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning?AdresseIdentificerer=${adgAdrId}&MedDybde=true&token=${BBR_TOKEN}`)
+      const r1 = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`)
+      const d1 = await r1.json()
+      if (d1 && d1.length > 0) {
+        const adresseId = d1[0].id
+        const adgAdrId = d1[0].adgangsadresseid
+        const r2 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/enhed?AdresseIdentificerer=${adresseId}&MedDybde=true&token=${BBR_TOKEN}`)
+        const d2 = await r2.json()
+        let boligareal = null
+        if (d2 && d2.length > 0) boligareal = d2[0].enh020EnhedensAreal || d2[0].enh021ArealTilBeboelse || null
+        const r3 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning?AdresseIdentificerer=${adgAdrId}&MedDybde=true&token=${BBR_TOKEN}`)
+        const d3 = await r3.json()
+        let grundareal = null, etager = null
+        if (d3 && d3.length > 0) { grundareal = d3[0].byg041BebyggetAreal || null; etager = d3[0].byg054AntalEtager || null }
+        setBbr({ adresseId, adgAdrId, boligareal, grundareal, etager })
       }
-      let grundareal = null, etager = null
-      if (Array.isArray(d3) && d3.length > 0) { grundareal = d3[0].byg041BebyggetAreal || null; etager = d3[0].byg054AntalEtager || null }
-      if (boligareal == null && grundareal == null && etager == null) throw new Error('BBR: ingen data fundet for adressen')
-      setBbr({ adresseId, adgAdrId, boligareal, grundareal, etager })
-    } catch (e) {
-      console.error('BBR fejl:', e)
-      setBbrFejl(e.message)
-    }
+    } catch (e) { console.error('BBR fejl:', e) }
     // Km uafhængigt af BBR-opslaget, så det virker selvom adresseopslaget ovenfor fejler
     if (startadresse) {
       const km = await beregnKm(startadresse, adresse)
@@ -230,7 +212,6 @@ function OpretSagModal({ onClose, onSaved, toast }) {
             onBlur={e => lookupBBRogKm(e.target.value)}
             placeholder="f.eks. Lyngvigvej 12, 2750 Ballerup" autoFocus />
           {bbrLoading && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>⏳ Henter data...</div>}
-          {bbrFejl && !bbrLoading && <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', marginTop: 4 }}>⚠ BBR-data kunne ikke hentes: {bbrFejl}</div>}
           {bbr && !bbrLoading && (
             <div style={{ fontSize: 12, color: 'var(--grn)', marginTop: 4 }}>
               ✓ Adresse fundet{bbr.boligareal ? ` · ${bbr.boligareal} m²` : ''}
