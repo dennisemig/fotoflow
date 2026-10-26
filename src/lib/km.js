@@ -68,23 +68,52 @@ export async function beregnKm(fraAdresse, tilAdresse) {
   return null
 }
 
-// Rute gennem adresserne i rækkefølge (fx hjem → sag 1 → sag 2 → hjem).
-// Returnerer km for hvert ben (adresser.length - 1), eller null hvis en adresse ikke kan findes.
-export async function beregnRute(adresser) {
-  try {
-    const punkter = []
-    for (const a of adresser) {
-      const k = await getKoordinater(a)
-      if (!k) return null
-      punkter.push(`${k.lng},${k.lat}`)
-    }
-    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${punkter.join(';')}?overview=false`)
-    const d = await r.json()
-    if (d.code === 'Ok' && d.routes.length > 0) {
-      return d.routes[0].legs.map(l => Math.round(l.distance / 1000 * 10) / 10)
-    }
-  } catch (e) {}
+// OSRM's offentlige server afviser for mange kald i træk, så rutekald køres med pause og ét genforsøg
+let naesteRute = Promise.resolve()
+function iRuteKoe(fn) {
+  const kald = naesteRute.then(fn)
+  naesteRute = kald.catch(() => {}).then(() => new Promise(r => setTimeout(r, 1000)))
+  return kald
+}
+
+async function osrmRute(punkter) {
+  for (let forsoeg = 0; forsoeg < 2; forsoeg++) {
+    try {
+      const r = await iRuteKoe(() => fetch(`https://router.project-osrm.org/route/v1/driving/${punkter.join(';')}?overview=false`))
+      const d = await r.json()
+      if (d.code === 'Ok' && d.routes.length > 0) return d.routes[0].legs.map(l => Math.round(l.distance / 1000 * 10) / 10)
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 2000))
+  }
   return null
+}
+
+const RUTE_KEY = 'fotoflow_ruter'
+function hentRuteCache() { try { return JSON.parse(localStorage.getItem(RUTE_KEY)) || {} } catch (e) { return {} } }
+
+// Rute hjem → stop 1 → stop 2 → … → hjem.
+// Stop der ikke kan findes på kortet springes over (med[i] = false).
+// Returnerer { med, ben } hvor ben er km for hvert ben mellem de medtagne stop, eller null.
+export async function beregnRute(startadresse, stop) {
+  const noegle = [startadresse, ...stop].join('|').toLowerCase()
+  const cache = hentRuteCache()
+  if (cache[noegle]) return cache[noegle]
+  const hjem = await getKoordinater(startadresse)
+  if (!hjem) return null
+  const med = []
+  const punkter = [`${hjem.lng},${hjem.lat}`]
+  for (const a of stop) {
+    const k = await getKoordinater(a)
+    med.push(!!k)
+    if (k) punkter.push(`${k.lng},${k.lat}`)
+  }
+  if (punkter.length === 1) return null
+  punkter.push(`${hjem.lng},${hjem.lat}`)
+  const ben = await osrmRute(punkter)
+  if (!ben) return null
+  const res = { med, ben }
+  try { localStorage.setItem(RUTE_KEY, JSON.stringify({ ...hentRuteCache(), [noegle]: res })) } catch (e) {}
+  return res
 }
 
 // Startadressen fra den indloggede brugers profil (Indstillinger)
