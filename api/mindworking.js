@@ -74,15 +74,23 @@ export default async function handler(req, res) {
     if (action === 'upload_billeder') {
       if (!caseNo || !billeder?.length) return res.status(400).json({ error: 'Mangler caseNo eller billeder' })
 
-      const kundeShopNo = shopNo || 'N260142'
-      console.log('Søger sag:', caseNo, '| shopNo:', kundeShopNo, '| endpoint:', endpoint)
+      // Nybolig-sagsnumre starter med butikkens shopNo (fx N2701920000739 → N270192)
+      const prefixShopNo = caseNo.match(/^(N\d{6})\d+$/i)?.[1]?.toUpperCase() || null
+      const kundeShopNo = shopNo || prefixShopNo || 'N260142'
 
-      const caseData = await gql(token, endpoint, `
-        query GetCase($shopNo: String!, $caseNo: String!) {
-          viewer { caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) { id } }
-        }`, { shopNo: kundeShopNo, caseNo })
+      async function findCaseId(shop) {
+        console.log('Søger sag:', caseNo, '| shopNo:', shop, '| endpoint:', endpoint)
+        const caseData = await gql(token, endpoint, `
+          query GetCase($shopNo: String!, $caseNo: String!) {
+            viewer { caseByCaseNo(shopNo: $shopNo, caseNo: $caseNo) { id } }
+          }`, { shopNo: shop, caseNo })
+        return caseData.viewer.caseByCaseNo?.id
+      }
 
-      const caseId = caseData.viewer.caseByCaseNo?.id
+      const kanPrøveIgen = prefixShopNo && prefixShopNo !== kundeShopNo
+      let caseId = await findCaseId(kundeShopNo).catch(e => { if (kanPrøveIgen) return null; throw e })
+      // Kundens shopNo matcher ikke sagsnummeret (fx sag på forkert kunde) – prøv butikken fra sagsnummeret
+      if (!caseId && kanPrøveIgen) caseId = await findCaseId(prefixShopNo)
       if (!caseId) return res.status(404).json({ error: `Sag ${caseNo} ikke fundet i butik ${kundeShopNo}${shopNo ? '' : ' (kunden har intet shopNo – bruger standard)'}` })
       console.log('CaseId:', caseId)
 
