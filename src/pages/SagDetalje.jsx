@@ -160,6 +160,12 @@ export default function SagDetalje() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div className="page-title" style={{ margin: 0 }}>{sag.adresse}</div>
         <span className={`badge badge-${badgeClass(sag.status)}`}>{statusLabel(sag.status)}</span>
+        {sag.mindworking_uploadet_at && (
+          <span className="badge" style={{ background: '#f0fdf4', color: '#2e7d4f', border: '1px solid #2e7d4f' }}
+            title={`${sag.mindworking_uploadet_antal || ''} billeder uploadet ${new Date(sag.mindworking_uploadet_at).toLocaleString('da-DK')}`}>
+            ✓ Uploadet til Mindworking {new Date(sag.mindworking_uploadet_at).toLocaleDateString('da-DK')}
+          </span>
+        )}
       </div>
 
       {editing && (
@@ -359,6 +365,7 @@ export default function SagDetalje() {
               mwSecret={kunde?.mindworking_secret}
               mwShopNo={kunde?.mindworking_shopno}
               toast={toast}
+              onMwUploadet={mwData => setSag(s => ({ ...s, ...mwData }))}
             />
           </div>
 
