@@ -119,7 +119,9 @@ async function osrmRute(punkter) {
   return null
 }
 
-const RUTE_KEY = 'fotoflow_ruter'
+// v2: tidligere versioner gemte også ruter hvor en adresse ikke blev fundet, så 'Prøv igen' ramte cachen
+const RUTE_KEY = 'fotoflow_ruter_v2'
+try { localStorage.removeItem('fotoflow_ruter') } catch (e) {}
 function hentRuteCache() { try { return JSON.parse(localStorage.getItem(RUTE_KEY)) || {} } catch (e) { return {} } }
 
 // Rute hjem → stop 1 → stop 2 → … → hjem.
@@ -128,7 +130,7 @@ function hentRuteCache() { try { return JSON.parse(localStorage.getItem(RUTE_KEY
 export async function beregnRute(startadresse, stop) {
   const noegle = [startadresse, ...stop].join('|').toLowerCase()
   const cache = hentRuteCache()
-  if (cache[noegle]) return cache[noegle]
+  if (cache[noegle] && !cache[noegle].fejl && cache[noegle].med.every(Boolean)) return cache[noegle]
   const hjem = await getKoordinater(startadresse)
   if (!hjem) return { fejl: 'start', med: stop.map(() => false) }
   const med = []
@@ -143,7 +145,10 @@ export async function beregnRute(startadresse, stop) {
   const ben = await osrmRute(punkter)
   if (!ben) return { fejl: 'rute', med }
   const res = { med, ben }
-  try { localStorage.setItem(RUTE_KEY, JSON.stringify({ ...hentRuteCache(), [noegle]: res })) } catch (e) {}
+  // Kun fuldstændige ruter gemmes, så dage med en manglende adresse prøves igen næste gang
+  if (med.every(Boolean)) {
+    try { localStorage.setItem(RUTE_KEY, JSON.stringify({ ...hentRuteCache(), [noegle]: res })) } catch (e) {}
+  }
   return res
 }
 
