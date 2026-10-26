@@ -76,9 +76,9 @@ export default function Bookinger() {
   }
 
   async function tilknytKunder() {
-    const { data: sager } = await supabase.from('sager').select('id, maegler_email, maegler_firma').is('kunde_id', null).or('maegler_email.not.is.null,maegler_firma.not.is.null')
+    const { data: sager } = await supabase.from('sager').select('id, maegler_email, maegler_firma, maegler_sagsnummer').is('kunde_id', null).or('maegler_email.not.is.null,maegler_firma.not.is.null')
     if (!sager?.length) { toast('Alle sager har allerede en kunde'); return }
-    const { data: kunder } = await supabase.from('kunder').select('id, navn, email')
+    const { data: kunder } = await supabase.from('kunder').select('id, navn, email, mindworking_shopno')
     let ok = 0
     for (const s of sager) {
       const kunde_id = await findKundeId(s, kunder || [])

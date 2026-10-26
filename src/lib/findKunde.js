@@ -35,10 +35,22 @@ export function matchKundeNavn(firma, kunder) {
 }
 
 // Finder kunde til en booking/sag:
+// 0) Mindworking-sagsnummeret starter med kundens shopNo (fx N2701920000739 -> N270192)
 // 1) samme mægler-email er tidligere knyttet til en kunde på en sag
 // 2) kundens email er mæglerens email
 // 3) mæglerfirma matcher kundens navn entydigt
-export async function findKundeId({ maegler_email, maegler_firma }, kunder) {
+export async function findKundeId({ maegler_email, maegler_firma, sagsnummer, maegler_sagsnummer }, kunder) {
+  if (!kunder) {
+    const { data } = await supabase.from('kunder').select('id, navn, email, mindworking_shopno')
+    kunder = data || []
+  }
+
+  const mwNr = (sagsnummer || maegler_sagsnummer || '').trim().toUpperCase()
+  if (mwNr) {
+    const shopMatch = kunder.filter(k => k.mindworking_shopno && mwNr.startsWith(String(k.mindworking_shopno).trim().toUpperCase()))
+    if (shopMatch.length === 1) return shopMatch[0].id
+  }
+
   const email = (maegler_email || '').trim()
   if (email) {
     const { data: tidligere } = await supabase
@@ -49,11 +61,6 @@ export async function findKundeId({ maegler_email, maegler_firma }, kunder) {
       .order('created_at', { ascending: false })
       .limit(1)
     if (tidligere?.[0]?.kunde_id) return tidligere[0].kunde_id
-  }
-
-  if (!kunder) {
-    const { data } = await supabase.from('kunder').select('id, navn, email')
-    kunder = data || []
   }
 
   if (email) {
