@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { gemKmForSag, hentStartadresse } from '../lib/km'
+import { gemKmForSag, hentStartadresse, beregnRute } from '../lib/km'
 
 const KM_TAKST = 3.79
 
@@ -11,6 +11,18 @@ const lokalDato = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2
 
 const SIDE = 1000
 
+const rund = km => Math.round(km * 10) / 10
+const tidSort = (a, b) => (a.tidspunkt || '99').localeCompare(b.tidspunkt || '99')
+
+// Mine sager grupperet pr. dag i rækkefølge efter tidspunkt
+function grupperDage(sager) {
+  const dage = {}
+  sager.forEach(s => { (dage[s.dato] = dage[s.dato] || []).push(s) })
+  return Object.entries(dage)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([dato, liste]) => ({ dato, sager: liste.sort(tidSort) }))
+}
+
 export default function Koersel() {
   const [sager, setSager] = useState([])
   const [freelancere, setFreelancere] = useState([])
@@ -19,6 +31,8 @@ export default function Koersel() {
   const [tab, setTab] = useState('self')
   const [loading, setLoading] = useState(true)
   const [beregner, setBeregner] = useState(null) // { done, total } mens manglende km beregnes
+  const [ruter, setRuter] = useState({}) // dato → km pr. ben for dage med flere sager
+  const [beregnerRuter, setBeregnerRuter] = useState(false)
   const hentId = useRef(0)
   const navigate = useNavigate()
 
@@ -30,13 +44,15 @@ export default function Koersel() {
     const aktuel = () => mitId === hentId.current
     setLoading(true)
     setBeregner(null)
+    setRuter({})
+    setBeregnerRuter(false)
 
     // Hent alle sager i perioden, også dem uden km endnu (Supabase giver max 1000 rækker pr. kald)
     let data = []
     for (let side = 0; ; side++) {
       const { data: rows, error } = await supabase
         .from('sager')
-        .select('id, adresse, dato, status, km_distance, freelancer_id, kunde_id')
+        .select('id, adresse, dato, tidspunkt, status, km_distance, freelancer_id, kunde_id')
         .gte('dato', fra)
         .lte('dato', til)
         .order('dato', { ascending: false })
@@ -64,18 +80,31 @@ export default function Koersel() {
 
     // Sager oprettet via booking/kalender (eller hvor beregningen fejlede) har ingen km. Beregn og gem dem nu.
     const mangler = data.filter(s => s.km_distance == null && s.adresse)
-    if (mangler.length === 0) return
+    const flereSager = grupperDage(data.filter(s => !s.freelancer_id && s.adresse)).filter(d => d.sager.length > 1)
+    if (mangler.length === 0 && flereSager.length === 0) return
     const startadresse = await hentStartadresse()
     if (!startadresse || !aktuel()) return
-    setBeregner({ done: 0, total: mangler.length })
-    for (let i = 0; i < mangler.length; i++) {
-      if (!aktuel()) return
-      const km = await gemKmForSag(mangler[i].id, mangler[i].adresse, startadresse)
-      if (!aktuel()) return
-      if (km != null) setSager(prev => prev.map(s => s.id === mangler[i].id ? { ...s, km_distance: km } : s))
-      setBeregner({ done: i + 1, total: mangler.length })
+    if (mangler.length > 0) {
+      setBeregner({ done: 0, total: mangler.length })
+      for (let i = 0; i < mangler.length; i++) {
+        if (!aktuel()) return
+        const km = await gemKmForSag(mangler[i].id, mangler[i].adresse, startadresse)
+        if (!aktuel()) return
+        if (km != null) setSager(prev => prev.map(s => s.id === mangler[i].id ? { ...s, km_distance: km } : s))
+        setBeregner({ done: i + 1, total: mangler.length })
+      }
+      setBeregner(null)
     }
-    setBeregner(null)
+
+    // Dage med flere sager køres som én rute: hjem → sag 1 → sag 2 → … → hjem
+    if (flereSager.length === 0) return
+    setBeregnerRuter(true)
+    for (const dag of flereSager) {
+      const ben = await beregnRute([startadresse, ...dag.sager.map(s => s.adresse), startadresse])
+      if (!aktuel()) return
+      setRuter(prev => ({ ...prev, [dag.dato]: ben }))
+    }
+    setBeregnerRuter(false)
   }
 
   const setPeriode = v => {
@@ -88,9 +117,25 @@ export default function Koersel() {
 
   const mineSager = sager.filter(s => !s.freelancer_id)
   const manglerKm = mineSager.filter(s => s.km_distance == null)
-  const totalKm = mineSager.reduce((a, s) => a + (parseFloat(s.km_distance) || 0), 0)
-  const totalTurRetur = Math.round(totalKm * 2 * 10) / 10
-  const fradrag = Math.round(totalTurRetur * KM_TAKST)
+
+  // Km pr. sag: ved én sag på dagen tur/retur hjemmefra. Ved flere sager dagens rute,
+  // hvor hver sag får strækningen fra forrige stop, og dagens sidste sag også turen hjem.
+  const dage = grupperDage(mineSager).map(dag => {
+    const ben = dag.sager.length > 1 ? ruter[dag.dato] : null
+    const rækker = dag.sager.map((s, i) => {
+      const sidst = i === dag.sager.length - 1
+      if (ben) {
+        return { ...s, km: rund(ben[i] + (sidst ? ben[i + 1] : 0)), strækning: `${i === 0 ? 'Hjem' : 'Forrige sag'} → her${sidst ? ' → hjem' : ''}` }
+      }
+      if (s.km_distance == null) return { ...s, km: null }
+      return { ...s, km: rund(parseFloat(s.km_distance) * 2), strækning: 'Hjem → her → hjem', separat: dag.sager.length > 1 }
+    })
+    return { ...dag, rækker }
+  })
+  const rækker = dage.flatMap(d => d.rækker)
+  const totalKm = rund(rækker.reduce((a, s) => a + (s.km || 0), 0))
+  const fradrag = Math.round(totalKm * KM_TAKST)
+  const separateDage = dage.filter(d => d.rækker.some(s => s.separat)).length
 
   return (
     <div>
@@ -151,8 +196,8 @@ export default function Koersel() {
               <div className="grid4" style={{ marginBottom: 16 }}>
                 {[
                   { lbl: 'Sager i alt', val: mineSager.length, icon: '📋' },
-                  { lbl: 'Km enkeltvis', val: `${totalKm.toFixed(1)} km`, icon: '🗺' },
-                  { lbl: 'Km tur/retur', val: `${totalTurRetur} km`, icon: '↔' },
+                  { lbl: 'Kørselsdage', val: dage.length, icon: '📅' },
+                  { lbl: 'Km i alt', val: `${totalKm.toFixed(1)} km`, icon: '🗺' },
                   { lbl: `Skattefradrag (${KM_TAKST} kr/km)`, val: `${fradrag.toLocaleString('da-DK')} kr`, icon: '💰', green: true },
                 ].map((s, i) => (
                   <div key={i} className="card">
@@ -169,39 +214,40 @@ export default function Koersel() {
                 <div className="info-box" style={{ marginBottom: 16 }}>⚠ {manglerKm.length} {manglerKm.length === 1 ? 'sag mangler' : 'sager mangler'} km og tælles ikke med i fradraget. Tjek at din startadresse er sat under Indstillinger, og at sagens adresse er korrekt.</div>
               )}
 
+              {beregnerRuter && (
+                <div className="info-box" style={{ marginBottom: 16 }}>⏳ Beregner ruter for dage med flere sager...</div>
+              )}
+              {separateDage > 0 && !beregnerRuter && (
+                <div className="info-box" style={{ marginBottom: 16 }}>⚠ Ruten kunne ikke beregnes for {separateDage} {separateDage === 1 ? 'dag' : 'dage'} med flere sager. Her er hver sag regnet som en tur hjemmefra (markeret med *).</div>
+              )}
+
               <div className="card">
                 <div className="section-hd">Kørsel pr. sag</div>
                 <div style={{ overflowX: 'auto' }}>
                   <table>
                     <thead>
-                      <tr><th>Dato</th><th>Adresse</th><th>Kunde</th><th>Km (enkelt)</th><th>Km (tur/retur)</th><th>Fradrag</th></tr>
+                      <tr><th>Dato</th><th>Adresse</th><th>Kunde</th><th>Strækning</th><th>Km</th><th>Fradrag</th></tr>
                     </thead>
                     <tbody>
-                      {mineSager.map(s => {
-                        const km = parseFloat(s.km_distance) || 0
-                        const tr = Math.round(km * 2 * 10) / 10
-                        const fr = Math.round(tr * KM_TAKST)
-                        return (
-                          <tr key={s.id} onClick={() => navigate(`/sager/${s.id}`)} style={{ cursor: 'pointer' }}>
-                            <td>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
-                            <td>{s.adresse}</td>
-                            <td>{s.kunde?.navn || '—'}</td>
-                            {s.km_distance == null ? (
-                              <td colSpan={3} style={{ color: 'var(--muted)' }}>{beregner ? 'Beregner...' : 'Km kunne ikke beregnes – tjek adressen'}</td>
-                            ) : (
-                              <>
-                                <td>{km.toFixed(1)} km</td>
-                                <td>{tr} km</td>
-                                <td style={{ color: 'var(--grn)', fontWeight: 600 }}>{fr.toLocaleString('da-DK')} kr</td>
-                              </>
-                            )}
-                          </tr>
-                        )
-                      })}
+                      {rækker.map(s => (
+                        <tr key={s.id} onClick={() => navigate(`/sager/${s.id}`)} style={{ cursor: 'pointer' }}>
+                          <td>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
+                          <td>{s.adresse}</td>
+                          <td>{s.kunde?.navn || '—'}</td>
+                          {s.km == null ? (
+                            <td colSpan={3} style={{ color: 'var(--muted)' }}>{beregner ? 'Beregner...' : 'Km kunne ikke beregnes – tjek adressen'}</td>
+                          ) : (
+                            <>
+                              <td style={{ color: 'var(--muted)', fontSize: 12 }}>{s.strækning}{s.separat ? ' *' : ''}</td>
+                              <td>{s.km.toFixed(1)} km</td>
+                              <td style={{ color: 'var(--grn)', fontWeight: 600 }}>{Math.round(s.km * KM_TAKST).toLocaleString('da-DK')} kr</td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
                       <tr style={{ fontWeight: 700, background: '#f5f7f9', borderTop: '1.5px solid var(--brd)' }}>
-                        <td colSpan={3}><b>Total</b></td>
+                        <td colSpan={4}><b>Total</b></td>
                         <td><b>{totalKm.toFixed(1)} km</b></td>
-                        <td><b>{totalTurRetur} km</b></td>
                         <td style={{ color: 'var(--grn)' }}><b>{fradrag.toLocaleString('da-DK')} kr</b></td>
                       </tr>
                     </tbody>
