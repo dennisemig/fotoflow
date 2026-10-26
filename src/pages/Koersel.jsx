@@ -144,6 +144,30 @@ export default function Koersel() {
   const fradrag = Math.round(totalKm * KM_TAKST)
   const separateSager = rækker.filter(s => s.separat).length
 
+  // CSV til dansk Excel: semikolon, decimalkomma og BOM så æøå vises rigtigt
+  function eksporterCsv() {
+    const tal = n => n == null ? '' : String(n).replace('.', ',')
+    const felt = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const linjer = [
+      ['Dato', 'Adresse', 'Kunde', 'Strækning', 'Km', `Fradrag (kr, ${tal(KM_TAKST)} kr/km)`],
+      ...rækker.map(s => [
+        s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '',
+        s.adresse, s.kunde?.navn || '',
+        s.km == null ? 'Km kunne ikke beregnes' : s.strækning + (s.separat ? ' *' : ''),
+        tal(s.km), s.km == null ? '' : Math.round(s.km * KM_TAKST),
+      ]),
+      ['Total', '', '', '', tal(totalKm), fradrag],
+    ]
+    if (separateSager > 0) linjer.push([], ['* Kunne ikke indgå i dagens rute og er regnet som separat tur hjemmefra'])
+    const csv = '\uFEFF' + linjer.map(l => l.map(felt).join(';')).join('\r\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `koersel_${fra}_${til}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div>
       <div className="page-title">Kørselsrapport</div>
@@ -179,6 +203,7 @@ export default function Koersel() {
           </select>
         </div>
         <div style={{ flex: 1 }}></div>
+        <button className="btn btn-outline btn-sm" onClick={eksporterCsv} disabled={loading || rækker.length === 0}>⬇ Eksporter Excel (CSV)</button>
         <button className="btn btn-green btn-sm" onClick={() => window.print()}>⬇ Eksporter PDF</button>
       </div>
 
