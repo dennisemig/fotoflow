@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { gemKmForSag, hentStartadresse, beregnRute } from '../lib/km'
+import { dagensTure, koerebogPdf, koerebogCsv } from '../lib/koerebog'
 
 const KM_TAKST = 3.79
 
@@ -33,10 +34,18 @@ export default function Koersel() {
   const [beregner, setBeregner] = useState(null) // { done, total } mens manglende km beregnes
   const [ruter, setRuter] = useState({}) // dato → km pr. ben for dage med flere sager
   const [beregnerRuter, setBeregnerRuter] = useState(false)
+  const [profil, setProfil] = useState(null)
   const hentId = useRef(0)
   const navigate = useNavigate()
 
   useEffect(() => { fetchData() }, [fra, til])
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase.from('profiles').select('full_name, startadresse').eq('id', user.id).single()
+      setProfil(data || null)
+    })
+  }, [])
 
   async function fetchData() {
     // Kun det seneste kald må opdatere siden, så et langsomt svar for en gammel periode ikke overskriver
@@ -137,36 +146,17 @@ export default function Koersel() {
       if (s.km_distance == null) return { ...s, km: null }
       return { ...s, km: rund(parseFloat(s.km_distance) * 2), strækning: flere ? 'Separat tur hjemmefra' : 'Hjem → her → hjem', separat: flere }
     })
-    return { ...dag, rækker }
+    return { ...dag, rækker, ture: dagensTure(dag.dato, rækker, rute) }
   })
   const rækker = dage.flatMap(d => d.rækker)
   const totalKm = rund(rækker.reduce((a, s) => a + (s.km || 0), 0))
   const fradrag = Math.round(totalKm * KM_TAKST)
   const separateSager = rækker.filter(s => s.separat).length
 
-  // CSV til dansk Excel: semikolon, decimalkomma og BOM så æøå vises rigtigt
-  function eksporterCsv() {
-    const tal = n => n == null ? '' : String(n).replace('.', ',')
-    const felt = v => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const linjer = [
-      ['Dato', 'Adresse', 'Kunde', 'Strækning', 'Km', `Fradrag (kr, ${tal(KM_TAKST)} kr/km)`],
-      ...rækker.map(s => [
-        s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '',
-        s.adresse, s.kunde?.navn || '',
-        s.km == null ? 'Km kunne ikke beregnes' : s.strækning + (s.separat ? ' *' : ''),
-        tal(s.km), s.km == null ? '' : Math.round(s.km * KM_TAKST),
-      ]),
-      ['Total', '', '', '', tal(totalKm), fradrag],
-    ]
-    if (separateSager > 0) linjer.push([], ['* Kunne ikke indgå i dagens rute og er regnet som separat tur hjemmefra'])
-    const csv = '\uFEFF' + linjer.map(l => l.map(felt).join(';')).join('\r\n')
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `koersel_${fra}_${til}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  // Kørebogen vises ældste dag først, som i en almindelig kørebog
+  const ture = [...dage].reverse().flatMap(d => d.ture)
+  const koerebog = { ture, fra, til, profil, sats: KM_TAKST }
+  const eksportKlar = !loading && !beregner && !beregnerRuter && ture.length > 0
 
   return (
     <div>
@@ -203,8 +193,8 @@ export default function Koersel() {
           </select>
         </div>
         <div style={{ flex: 1 }}></div>
-        <button className="btn btn-outline btn-sm" onClick={eksporterCsv} disabled={loading || rækker.length === 0}>⬇ Eksporter Excel (CSV)</button>
-        <button className="btn btn-green btn-sm" onClick={() => window.print()}>⬇ Eksporter PDF</button>
+        <button className="btn btn-outline btn-sm" onClick={() => koerebogCsv(koerebog)} disabled={!eksportKlar}>⬇ Eksporter Excel (CSV)</button>
+        <button className="btn btn-green btn-sm" onClick={() => koerebogPdf(koerebog)} disabled={!eksportKlar}>⬇ Eksporter PDF</button>
       </div>
 
       {beregner && (
