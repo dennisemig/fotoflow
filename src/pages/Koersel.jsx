@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { gemKmForSag, hentStartadresse, beregnRute } from '../lib/km'
+import { dagensTure, koerebogPdf, koerebogCsv } from '../lib/koerebog'
 
 const KM_TAKST = 3.79
 
@@ -33,10 +34,18 @@ export default function Koersel() {
   const [beregner, setBeregner] = useState(null) // { done, total } mens manglende km beregnes
   const [ruter, setRuter] = useState({}) // dato → km pr. ben for dage med flere sager
   const [beregnerRuter, setBeregnerRuter] = useState(false)
+  const [profil, setProfil] = useState(null)
   const hentId = useRef(0)
   const navigate = useNavigate()
 
   useEffect(() => { fetchData() }, [fra, til])
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase.from('profiles').select('full_name, startadresse').eq('id', user.id).single()
+      setProfil(data || null)
+    })
+  }, [])
 
   async function fetchData() {
     // Kun det seneste kald må opdatere siden, så et langsomt svar for en gammel periode ikke overskriver
@@ -100,9 +109,9 @@ export default function Koersel() {
     if (flereSager.length === 0) return
     setBeregnerRuter(true)
     for (const dag of flereSager) {
-      const ben = await beregnRute([startadresse, ...dag.sager.map(s => s.adresse), startadresse])
+      const rute = await beregnRute(startadresse, dag.sager.map(s => s.adresse))
       if (!aktuel()) return
-      setRuter(prev => ({ ...prev, [dag.dato]: ben }))
+      setRuter(prev => ({ ...prev, [dag.dato]: rute }))
     }
     setBeregnerRuter(false)
   }
@@ -120,22 +129,34 @@ export default function Koersel() {
 
   // Km pr. sag: ved én sag på dagen tur/retur hjemmefra. Ved flere sager dagens rute,
   // hvor hver sag får strækningen fra forrige stop, og dagens sidste sag også turen hjem.
+  // Sager hvis adresse ikke kan findes på kortet regnes som en separat tur hjemmefra (*).
   const dage = grupperDage(mineSager).map(dag => {
-    const ben = dag.sager.length > 1 ? ruter[dag.dato] : null
+    const flere = dag.sager.length > 1
+    const rute = flere ? ruter[dag.dato] : null
+    const antalMed = rute ? rute.med.filter(Boolean).length : 0
+    let j = 0
     const rækker = dag.sager.map((s, i) => {
-      const sidst = i === dag.sager.length - 1
-      if (ben) {
-        return { ...s, km: rund(ben[i] + (sidst ? ben[i + 1] : 0)), strækning: `${i === 0 ? 'Hjem' : 'Forrige sag'} → her${sidst ? ' → hjem' : ''}` }
+      if (flere && rute === undefined && beregnerRuter) return { ...s, km: null, venter: true }
+      if (rute && rute.med[i]) {
+        const først = j === 0, sidst = j === antalMed - 1
+        const km = rund(rute.ben[j] + (sidst ? rute.ben[j + 1] : 0))
+        j++
+        return { ...s, km, strækning: `${først ? 'Hjem' : 'Forrige sag'} → her${sidst ? ' → hjem' : ''}` }
       }
       if (s.km_distance == null) return { ...s, km: null }
-      return { ...s, km: rund(parseFloat(s.km_distance) * 2), strækning: 'Hjem → her → hjem', separat: dag.sager.length > 1 }
+      return { ...s, km: rund(parseFloat(s.km_distance) * 2), strækning: flere ? 'Separat tur hjemmefra' : 'Hjem → her → hjem', separat: flere }
     })
-    return { ...dag, rækker }
+    return { ...dag, rækker, ture: dagensTure(dag.dato, rækker, rute) }
   })
   const rækker = dage.flatMap(d => d.rækker)
   const totalKm = rund(rækker.reduce((a, s) => a + (s.km || 0), 0))
   const fradrag = Math.round(totalKm * KM_TAKST)
-  const separateDage = dage.filter(d => d.rækker.some(s => s.separat)).length
+  const separateSager = rækker.filter(s => s.separat).length
+
+  // Kørebogen vises ældste dag først, som i en almindelig kørebog
+  const ture = [...dage].reverse().flatMap(d => d.ture)
+  const koerebog = { ture, fra, til, profil, sats: KM_TAKST }
+  const eksportKlar = !loading && !beregner && !beregnerRuter && ture.length > 0
 
   return (
     <div>
@@ -172,7 +193,8 @@ export default function Koersel() {
           </select>
         </div>
         <div style={{ flex: 1 }}></div>
-        <button className="btn btn-green btn-sm" onClick={() => window.print()}>⬇ Eksporter PDF</button>
+        <button className="btn btn-outline btn-sm" onClick={() => koerebogCsv(koerebog)} disabled={!eksportKlar}>⬇ Eksporter Excel (CSV)</button>
+        <button className="btn btn-green btn-sm" onClick={() => koerebogPdf(koerebog)} disabled={!eksportKlar}>⬇ Eksporter PDF</button>
       </div>
 
       {beregner && (
@@ -217,8 +239,8 @@ export default function Koersel() {
               {beregnerRuter && (
                 <div className="info-box" style={{ marginBottom: 16 }}>⏳ Beregner ruter for dage med flere sager...</div>
               )}
-              {separateDage > 0 && !beregnerRuter && (
-                <div className="info-box" style={{ marginBottom: 16 }}>⚠ Ruten kunne ikke beregnes for {separateDage} {separateDage === 1 ? 'dag' : 'dage'} med flere sager. Her er hver sag regnet som en tur hjemmefra (markeret med *).</div>
+              {separateSager > 0 && !beregnerRuter && (
+                <div className="info-box" style={{ marginBottom: 16 }}>* {separateSager} {separateSager === 1 ? 'sag' : 'sager'} på dage med flere opgaver kunne ikke indgå i dagens rute (typisk fordi adressen ikke blev fundet på kortet). De er regnet som en separat tur hjemmefra. Ret adressen på sagen, hvis det er en fejl.</div>
               )}
 
               <div className="card">
@@ -235,7 +257,7 @@ export default function Koersel() {
                           <td>{s.adresse}</td>
                           <td>{s.kunde?.navn || '—'}</td>
                           {s.km == null ? (
-                            <td colSpan={3} style={{ color: 'var(--muted)' }}>{beregner ? 'Beregner...' : 'Km kunne ikke beregnes – tjek adressen'}</td>
+                            <td colSpan={3} style={{ color: 'var(--muted)' }}>{s.venter ? 'Beregner rute...' : beregner ? 'Beregner...' : 'Km kunne ikke beregnes – tjek adressen'}</td>
                           ) : (
                             <>
                               <td style={{ color: 'var(--muted)', fontSize: 12 }}>{s.strækning}{s.separat ? ' *' : ''}</td>
