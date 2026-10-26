@@ -53,7 +53,10 @@ export default async function handler(req, res) {
     req.on('end', () => { try { resolve(JSON.parse(data)) } catch(e) { reject(e) } })
     req.on('error', reject)
   })
-  const { action, caseNo, billeder, shopNo, mw_endpoint, mw_token_url, mw_secret } = body
+  const { action, billeder, mw_endpoint, mw_token_url, mw_secret } = body
+  // Fjern mellemrum/linjeskift fra indtastede numre, ellers finder Mindworking ikke sagen
+  const caseNo = String(body.caseNo || '').trim()
+  const shopNo = String(body.shopNo || '').trim()
 
   // Brug kundens endpoint hvis tilgængeligt, ellers fallback til Nybolig
   const endpoint = mw_endpoint || DEFAULT_ENDPOINT
@@ -80,7 +83,7 @@ export default async function handler(req, res) {
         }`, { shopNo: kundeShopNo, caseNo })
 
       const caseId = caseData.viewer.caseByCaseNo?.id
-      if (!caseId) return res.status(404).json({ error: `Sag ${caseNo} ikke fundet` })
+      if (!caseId) return res.status(404).json({ error: `Sag ${caseNo} ikke fundet i butik ${kundeShopNo}${shopNo ? '' : ' (kunden har intet shopNo – bruger standard)'}` })
       console.log('CaseId:', caseId)
 
       const resultater = []
