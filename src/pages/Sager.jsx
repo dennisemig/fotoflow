@@ -5,6 +5,8 @@ import { useToast, ToastContainer } from '../hooks/useToast'
 import { beregnKm } from '../lib/km'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
+// Offentlig token fra Adressevælgerens dokumentation (brugerstyring er ikke lanceret endnu)
+const ADRESSEVAELGER_TOKEN = 'adressevaelger123'
 const BBR_TOKEN = 'CPbVQka4R26OfpgOBMBi3sb6DnN63UVWn3kieXz844B6WJ0lxXqR8UPbOrM0eFHJ7vFmav9bw7w5pLM5Pcnk9Ws9Xyusxb7Ze'
 
 export default function Sager() {
@@ -152,19 +154,24 @@ function OpretSagModal({ onClose, onSaved, toast }) {
     if (adresse.length < 6) return
     setBbrLoading(true)
     try {
-      const r1 = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`)
+      // DAWA er lukket (1. okt 2026). Adresse-id og husnummer-id findes nu via Klimadatastyrelsens Adressevælger.
+      const r1 = await fetch(`https://adressevaelger.dk/adresser/soeg?tekst=${encodeURIComponent(adresse)}&maksimum=5&token=${ADRESSEVAELGER_TOKEN}`)
       const d1 = await r1.json()
-      if (d1 && d1.length > 0) {
-        const adresseId = d1[0].id
-        const adgAdrId = d1[0].adgangsadresseid
+      const fund = (d1?.fund || []).find(f => f.type === 'adresse' && f.husnummerId) || (d1?.fund || []).find(f => f.id && f.husnummerId)
+      if (fund) {
+        const adresseId = fund.id
+        const adgAdrId = fund.husnummerId
         const r2 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/enhed?AdresseIdentificerer=${adresseId}&MedDybde=true&token=${BBR_TOKEN}`)
         const d2 = await r2.json()
         let boligareal = null
         if (d2 && d2.length > 0) boligareal = d2[0].enh020EnhedensAreal || d2[0].enh021ArealTilBeboelse || null
-        const r3 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning?AdresseIdentificerer=${adgAdrId}&MedDybde=true&token=${BBR_TOKEN}`)
-        const d3 = await r3.json()
+        // Bygning slås op på DAR-husnummer; AdresseIdentificerer er beholdt som reserve
+        let d3 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning?Husnummer=${adgAdrId}&MedDybde=true&token=${BBR_TOKEN}`).then(r => r.json()).catch(() => null)
+        if (!Array.isArray(d3) || d3.length === 0) {
+          d3 = await fetch(`https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning?AdresseIdentificerer=${adgAdrId}&MedDybde=true&token=${BBR_TOKEN}`).then(r => r.json()).catch(() => null)
+        }
         let grundareal = null, etager = null
-        if (d3 && d3.length > 0) { grundareal = d3[0].byg041BebyggetAreal || null; etager = d3[0].byg054AntalEtager || null }
+        if (Array.isArray(d3) && d3.length > 0) { grundareal = d3[0].byg041BebyggetAreal || null; etager = d3[0].byg054AntalEtager || null }
         setBbr({ adresseId, adgAdrId, boligareal, grundareal, etager })
       }
     } catch (e) { console.error('BBR fejl:', e) }
