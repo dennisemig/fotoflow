@@ -57,7 +57,9 @@ async function getKoordinater(adresse) {
   let res = null
   // Først via vores egen server (caches i Vercel); browseren kan blive blokeret af kortserverne
   try {
-    const s = await iKoe(() => viaServer(adresse))
+    let s
+    try { s = await iKoe(() => viaServer(adresse)) }
+    catch (e) { await vent(3000); s = await iKoe(() => viaServer(adresse)) } // kortserveren var travl: ét genforsøg
     if (s.ikkeFundet) return null
     res = s
   } catch (e) {
