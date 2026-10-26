@@ -9,7 +9,7 @@ const TAGS = [
   'Udsigt', 'Værelse'
 ]
 
-export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, mwEndpoint, mwTokenUrl, mwSecret, mwShopNo, toast }) {
+export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, mwEndpoint, mwTokenUrl, mwSecret, mwShopNo, toast, onMwUploadet }) {
   const [uploads, setUploads] = useState([])
   const [uploading, setUploading] = useState(false)
   const [fileProgress, setFileProgress] = useState({})
@@ -147,6 +147,13 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, mwEndpoint
       if (result.success) {
         toast?.(`✓ ${result.uploadet} af ${result.total} billeder uploadet til Mindworking!`)
         setValgte(new Set())
+        if (result.uploadet > 0) {
+          // Gem at sagen er uploadet, så det kan vises som mærkat på sagen
+          const mwData = { mindworking_uploadet_at: new Date().toISOString(), mindworking_uploadet_antal: result.uploadet }
+          const { error } = await supabase.from('sager').update(mwData).eq('id', sagId)
+          if (error) console.error('Kunne ikke gemme Mindworking-upload:', error.message)
+          onMwUploadet?.(mwData)
+        }
       } else {
         toast?.('Fejl: ' + result.error, 'error')
       }
