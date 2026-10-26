@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
+import { findKundeId } from '../lib/findKunde'
 
 export default function Bookinger() {
   const [bookinger, setBookinger] = useState([])
@@ -25,17 +26,8 @@ export default function Bookinger() {
   }
 
   async function godkend(booking) {
-    // Slå kunde op via maegler_firma
-    let kunde_id = null
-    if (booking.maegler_firma) {
-      const { data: kundeMatch } = await supabase
-        .from('kunder')
-        .select('id')
-        .ilike('navn', `%${booking.maegler_firma}%`)
-        .limit(1)
-        .single()
-      if (kundeMatch) kunde_id = kundeMatch.id
-    }
+    // Find kunden ud fra mæglerens email/firma så den er valgt på sagen
+    const kunde_id = await findKundeId(booking)
 
     // Opret sag fra booking med mægler-info
     const { data: sag, error } = await supabase.from('sager').insert([{
@@ -78,8 +70,24 @@ export default function Bookinger() {
       })
     }).catch(() => {})
 
-    toast('✓ Booking godkendt – sag oprettet og bekræftelsesmail sendt!')
+    if (kunde_id) toast('✓ Booking godkendt – sag oprettet og bekræftelsesmail sendt!')
+    else toast('✓ Booking godkendt, men ingen kunde fundet for "' + (booking.maegler_firma || booking.maegler_email) + '" – vælg kunde på sagen', 'warning')
     fetchBookinger()
+  }
+
+  async function tilknytKunder() {
+    const { data: sager } = await supabase.from('sager').select('id, maegler_email, maegler_firma, maegler_sagsnummer').is('kunde_id', null).or('maegler_email.not.is.null,maegler_firma.not.is.null')
+    if (!sager?.length) { toast('Alle sager har allerede en kunde'); return }
+    const { data: kunder } = await supabase.from('kunder').select('id, navn, email, mindworking_shopno')
+    let ok = 0
+    for (const s of sager) {
+      const kunde_id = await findKundeId(s, kunder || [])
+      if (!kunde_id) continue
+      const { error } = await supabase.from('sager').update({ kunde_id }).eq('id', s.id).is('kunde_id', null)
+      if (!error) ok++
+    }
+    const mangler = sager.length - ok
+    toast(`✓ Kunde tilknyttet ${ok} sag${ok === 1 ? '' : 'er'}` + (mangler ? ` – ${mangler} skal vælges manuelt` : ''), mangler ? 'warning' : 'success')
   }
 
   async function sætPåHold(booking, bemærkning) {
@@ -155,6 +163,9 @@ export default function Bookinger() {
             {label}
           </button>
         ))}
+        <button className="btn btn-sm btn-outline" style={{ marginLeft: 'auto' }} onClick={tilknytKunder} title="Sætter kunde på sager fra bookinger, hvor kunden mangler">
+          Tilknyt kunder til ældre sager
+        </button>
       </div>
 
       {loading ? (
