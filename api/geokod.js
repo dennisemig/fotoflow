@@ -9,8 +9,14 @@ function udenEtage(adresse) {
   return m ? `${m[1]}, ${m[2]} ${m[3]}` : null
 }
 
+const vent = ms => new Promise(r => setTimeout(r, ms))
+
 async function nominatim(q) {
-  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=dk&limit=1&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': UA, 'Accept-Language': 'da' } })
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=dk&limit=1&q=${encodeURIComponent(q)}`
+  const headers = { 'User-Agent': UA, 'Accept-Language': 'da' }
+  let r = await fetch(url, { headers })
+  // Mange opslag i træk giver 429 (for mange kald): vent og prøv én gang til
+  if (r.status === 429 || r.status >= 500) { await vent(1500); r = await fetch(url, { headers }) }
   if (!r.ok) throw new Error(`Nominatim ${r.status}`)
   const d = await r.json()
   return d.length > 0 ? { lng: parseFloat(d[0].lon), lat: parseFloat(d[0].lat), kilde: 'nominatim' } : null
@@ -41,6 +47,6 @@ export default async function handler(req, res) {
     }
   }
   res.setHeader('Cache-Control', 'no-store')
-  // 404 = ikke fundet, 502 = kortserverne svarede ikke
-  return res.status(fejl.length === forsoeg.length * 2 ? 502 : 404).json({ error: 'Ikke fundet', fejl })
+  // 404 = ikke fundet, 502 = en kortserver svarede ikke, så svaret er ikke sikkert (browseren prøver igen)
+  return res.status(fejl.length > 0 ? 502 : 404).json({ error: 'Ikke fundet', fejl })
 }
