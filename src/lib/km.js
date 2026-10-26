@@ -43,16 +43,32 @@ function udenEtage(adresse) {
   return m ? `${m[1]}, ${m[2]} ${m[3]}` : null
 }
 
+async function viaServer(adresse) {
+  const r = await fetch(`/api/geokod?q=${encodeURIComponent(adresse)}`)
+  if (r.status === 404) return { ikkeFundet: true }
+  if (!r.ok) throw new Error(`geokod ${r.status}`)
+  const d = await r.json()
+  return { lng: d.lng, lat: d.lat }
+}
+
 async function getKoordinater(adresse) {
   const noegle = adresse.trim().toLowerCase()
   if (koordinatCache.has(noegle)) return koordinatCache.get(noegle)
-  const forsoeg = [adresse, udenEtage(adresse)].filter((q, i, a) => q && a.indexOf(q) === i)
   let res = null
-  for (const q of forsoeg) {
-    try { res = await iKoe(() => nominatim(q)) } catch (e) {}
-    if (res) break
-    try { res = await photon(q) } catch (e) {}
-    if (res) break
+  // Først via vores egen server (caches i Vercel); browseren kan blive blokeret af kortserverne
+  try {
+    const s = await iKoe(() => viaServer(adresse))
+    if (s.ikkeFundet) return null
+    res = s
+  } catch (e) {
+    // Serveren svarede ikke (fx lokal udvikling): slå op direkte fra browseren
+    const forsoeg = [adresse, udenEtage(adresse)].filter((q, i, a) => q && a.indexOf(q) === i)
+    for (const q of forsoeg) {
+      try { res = await iKoe(() => nominatim(q)) } catch (e) {}
+      if (res) break
+      try { res = await photon(q) } catch (e) {}
+      if (res) break
+    }
   }
   if (res) { koordinatCache.set(noegle, res); gemCache() }
   return res
