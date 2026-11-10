@@ -20,6 +20,7 @@ export default function Kalender() {
   const [blokeringer, setBlokeringer] = useState([])
   const [showBlokerModal, setShowBlokerModal] = useState(false)
   const [blokerDato, setBlokerDato] = useState(null)
+  const [valgtBlokering, setValgtBlokering] = useState(null)
 
   async function fetchBlokeringer() {
     const from = `${year}-${String(month + 1).padStart(2, '0')}-01`
@@ -124,8 +125,11 @@ export default function Kalender() {
                   </div>
                 ))}
                 {blokeringerForDay(day).map(b => (
-                  <div key={b.id} style={{ fontSize: 9, fontWeight: 600, padding: '2px 5px', borderRadius: 4, marginBottom: 2, background: '#e53e3e', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={b.beskrivelse || 'Blokeret'}>
+                  <div key={b.id}
+                    onClick={e => { e.stopPropagation(); setValgtBlokering(b) }}
+                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setValgtBlokering(b) }}
+                    style={{ fontSize: 9, fontWeight: 600, padding: '2px 5px', borderRadius: 4, marginBottom: 2, cursor: 'pointer', background: '#e53e3e', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={(b.beskrivelse || 'Blokeret') + ' – klik for at fjerne'}>
                     🚫 {b.tidspunkt ? String(b.tidspunkt).slice(0,5) : ''}{b.tidspunkt_slut ? `–${String(b.tidspunkt_slut).slice(0,5)}` : ''}{!b.tidspunkt ? 'Hele dagen' : ''} {b.beskrivelse || ''}
                   </div>
                 ))}
@@ -185,6 +189,15 @@ export default function Kalender() {
           dato={blokerDato}
           onClose={() => setShowBlokerModal(false)}
           onSaved={() => { setShowBlokerModal(false); fetchBlokeringer(); toast('✓ Tid blokeret!') }}
+          toast={toast}
+        />
+      )}
+
+      {valgtBlokering && (
+        <FjernBlokeringModal
+          blokering={valgtBlokering}
+          onClose={() => setValgtBlokering(null)}
+          onRemoved={(antal) => { setValgtBlokering(null); fetchBlokeringer(); toast(antal > 1 ? `✓ ${antal} blokerede dage fjernet` : '✓ Blokering fjernet') }}
           toast={toast}
         />
       )}
@@ -354,6 +367,80 @@ function BlokerModal({ dato, onClose, onSaved, toast }) {
           <button className="btn btn-outline btn-sm" onClick={onClose}>Annuller</button>
           <button className="btn btn-sm" style={{ background: '#e53e3e', color: '#fff' }} onClick={handleSave} disabled={saving}>
             {saving ? 'Gemmer...' : `🚫 Bloker ${antalDage > 1 ? antalDage + ' dage' : 'dag'}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Næste/forrige dato som 'YYYY-MM-DD' (middag, så sommertid ikke flytter datoen)
+function skiftDato(dato, dage) {
+  const d = new Date(dato + 'T12:00:00')
+  d.setDate(d.getDate() + dage)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function FjernBlokeringModal({ blokering, onClose, onRemoved, toast }) {
+  const [periode, setPeriode] = useState([blokering])
+  const [sletter, setSletter] = useState(false)
+
+  // Find de dage, der blev blokeret sammen med denne (sammenhængende dage med samme beskrivelse og tid)
+  useEffect(() => {
+    let q = supabase.from('kalender_blokeringer').select('*')
+    q = blokering.beskrivelse ? q.eq('beskrivelse', blokering.beskrivelse) : q.is('beskrivelse', null)
+    q = blokering.tidspunkt ? q.eq('tidspunkt', blokering.tidspunkt) : q.is('tidspunkt', null)
+    q = blokering.tidspunkt_slut ? q.eq('tidspunkt_slut', blokering.tidspunkt_slut) : q.is('tidspunkt_slut', null)
+    q.then(({ data }) => {
+      if (!data) return
+      const perDato = new Map(data.map(b => [b.dato, b]))
+      const run = [blokering]
+      for (let d = skiftDato(blokering.dato, -1); perDato.has(d); d = skiftDato(d, -1)) run.unshift(perDato.get(d))
+      for (let d = skiftDato(blokering.dato, 1); perDato.has(d); d = skiftDato(d, 1)) run.push(perDato.get(d))
+      setPeriode(run)
+    })
+  }, [blokering])
+
+  async function fjern(rækker) {
+    setSletter(true)
+    const ids = rækker.map(b => b.id)
+    // .select() returnerer de slettede rækker – 0 rækker betyder, at databasen ikke tillod sletningen
+    const { data, error } = await supabase.from('kalender_blokeringer').delete().in('id', ids).select('id')
+    setSletter(false)
+    if (error) { toast('Fejl: ' + error.message, 'error'); return }
+    if (!data || data.length === 0) { toast('Blokeringen kunne ikke fjernes (mangler slette-rettighed i databasen)', 'error'); return }
+    onRemoved(data.length)
+  }
+
+  const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })
+  const tid = blokering.tidspunkt
+    ? `kl. ${String(blokering.tidspunkt).slice(0, 5)}${blokering.tidspunkt_slut ? '–' + String(blokering.tidspunkt_slut).slice(0, 5) : ''}`
+    : 'Hele dagen'
+
+  return (
+    <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-title">
+          🚫 Blokeret tid
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, textTransform: 'capitalize' }}>{fmt(blokering.dato)}</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4 }}>{tid}</div>
+        {blokering.beskrivelse && <div style={{ fontSize: 13, marginBottom: 4 }}>{blokering.beskrivelse}</div>}
+        {periode.length > 1 && (
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
+            Del af en periode på {periode.length} dage ({fmt(periode[0].dato)} – {fmt(periode[periode.length - 1].dato)})
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={sletter}>Annuller</button>
+          {periode.length > 1 && (
+            <button className="btn btn-outline btn-sm" style={{ color: '#e53e3e', borderColor: '#e53e3e' }} onClick={() => fjern(periode)} disabled={sletter}>
+              Fjern alle {periode.length} dage
+            </button>
+          )}
+          <button className="btn btn-sm" style={{ background: '#e53e3e', color: '#fff' }} onClick={() => fjern([blokering])} disabled={sletter}>
+            {sletter ? 'Fjerner...' : periode.length > 1 ? 'Fjern kun denne dag' : 'Fjern blokering'}
           </button>
         </div>
       </div>
