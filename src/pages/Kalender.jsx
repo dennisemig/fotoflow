@@ -297,8 +297,18 @@ function BlokerModal({ dato, onClose, onSaved, toast }) {
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // "Til" følger med "Fra", medmindre man allerede har valgt en senere slutdato
+  function skiftFra(nyFra) {
+    setForm(f => ({
+      ...f,
+      dato_fra: nyFra,
+      dato_til: (!f.dato_til || f.dato_til === f.dato_fra || f.dato_til < nyFra) ? nyFra : f.dato_til,
+    }))
+  }
+
   async function handleSave() {
     if (!form.dato_fra) { toast('Vælg en startdato', 'error'); return }
+    if (form.dato_til && form.dato_til < form.dato_fra) { toast('"Til dato" er før "Fra dato"', 'error'); return }
     setSaving(true)
 
     // Generer alle datoer mellem fra og til
@@ -337,7 +347,7 @@ function BlokerModal({ dato, onClose, onSaved, toast }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="form-group">
             <label>Fra dato *</label>
-            <input type="date" value={form.dato_fra} onChange={e => set('dato_fra', e.target.value)} min={new Date().toISOString().split('T')[0]} />
+            <input type="date" value={form.dato_fra} onChange={e => skiftFra(e.target.value)} min={new Date().toISOString().split('T')[0]} />
           </div>
           <div className="form-group">
             <label>Til dato</label>
