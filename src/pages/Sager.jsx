@@ -14,6 +14,8 @@ const STATUSSER = [
   { key: 'afsluttet', label: 'Afsluttet' },
 ]
 const statusAf = s => s.status || 'ny'
+// Tillæg gemmes som navne på sagen. Matcher fx "Nøgleafhentning", "Afhentning af nøgle", "Noegle"
+const harNoegleTillaeg = s => (s.tillaeg || []).some(t => /n(ø|o|oe)gle/i.test(t || ''))
 // Under denne bredde er der ikke plads til delt visning, så "Se sag" åbner sagen på egen side
 const DELT_VISNING_MIN_BREDDE = 1100
 
@@ -53,7 +55,7 @@ export default function Sager() {
     if (!stille) setLoading(true)
     const { data: sagerData, error } = await supabase
       .from('sager')
-      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer, noter')
+      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer, noter, tillaeg')
       .order('dato', { ascending: false })
 
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
@@ -158,6 +160,7 @@ export default function Sager() {
                     </td>
                     <td>
                       {s.adresse || '—'}
+                      {harNoegleTillaeg(s) && <span title="Nøgleafhentning" style={{ marginLeft: 6 }}>🔑</span>}
                       {s.noter && (
                         <div title={s.noter} style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {s.noter}</div>
                       )}
