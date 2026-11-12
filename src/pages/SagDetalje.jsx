@@ -6,8 +6,11 @@ import BilledeGalleri from './BilledeGalleri'
 import { gemKmForSag } from '../lib/km'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
-export default function SagDetalje() {
-  const { id } = useParams()
+// Kan bruges som egen side (/sager/:id) eller indlejret i højre halvdel af Sager-listen
+// (sagId + embedded). onChanged kaldes når sagen er ændret, så listen kan opdatere sig.
+export default function SagDetalje({ sagId, embedded = false, onClose, onChanged }) {
+  const params = useParams()
+  const id = sagId || params.id
   const navigate = useNavigate()
   const [sag, setSag] = useState(null)
   const [fakturerer, setFakturerer] = useState(false)
@@ -43,6 +46,7 @@ export default function SagDetalje() {
   async function bookFreelancerOgSendMail(fId) {
     const fl = freelancere.find(f => f.id === fId)
     await supabase.from('sager').update({ freelancer_id: fId }).eq('id', id)
+    onChanged?.()
     setFreelancer(fl); setSag(s => ({ ...s, freelancer_id: fId })); setShowBookModal(false)
     if (fl?.email) {
       await fetch('/api/send-notification', {
@@ -68,6 +72,7 @@ export default function SagDetalje() {
     const udloeber = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     const galleriLink = `${window.location.origin}/levering/${token}`
     await supabase.from('sager').update({ status: 'leveret', levering_token: token, levering_udloeber: udloeber }).eq('id', id)
+    onChanged?.()
     setSag(s => ({ ...s, status: 'leveret', levering_token: token }))
     const { count } = await supabase.from('uploads').select('*', { count: 'exact', head: true }).eq('sag_id', id)
     const modtager = sag.maegler_email || kunde?.email
@@ -126,12 +131,13 @@ export default function SagDetalje() {
   async function saveEdit() {
     setSaving(true)
     await supabase.from('sager').update({ adresse: editForm.adresse, dato: editForm.dato, tidspunkt: editForm.tidspunkt || null, tidspunkt_slut: editForm.tidspunkt_slut || null, type: editForm.type, maks_billeder: editForm.maks_billeder, kunde_id: editForm.kunde_id || null, freelancer_id: editForm.freelancer_id || null }).eq('id', id)
+    onChanged?.()
     // Ny adresse → ny km til kørselsrapporten
     if (editForm.adresse !== sag.adresse) await gemKmForSag(id, editForm.adresse)
     setSaving(false); setEditing(false); fetchSag(); toast('✓ Sag opdateret')
   }
-  async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); toast('✓ Noter gemt') }
-  async function saveMwNummer() { await supabase.from('sager').update({ maegler_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, maegler_sagsnummer: mwNummer })); toast('✓ Gemt') }
+  async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); onChanged?.(); toast('✓ Noter gemt') }
+  async function saveMwNummer() { await supabase.from('sager').update({ maegler_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, maegler_sagsnummer: mwNummer })); onChanged?.(); toast('✓ Gemt') }
 
   async function hentMwSag() {
     if (!mwNummer) return
@@ -154,10 +160,10 @@ export default function SagDetalje() {
     }
     setMwLoading(false)
   }
-  async function updateStatus(status) { await supabase.from('sager').update({ status }).eq('id', id); setSag(s => ({ ...s, status })); toast('✓ Status opdateret') }
-  async function sletSag() { if (!confirm('Slet sagen permanent?')) return; await supabase.from('sager').delete().eq('id', id); navigate('/sager') }
+  async function updateStatus(status) { await supabase.from('sager').update({ status }).eq('id', id); setSag(s => ({ ...s, status })); onChanged?.(); toast('✓ Status opdateret') }
+  async function sletSag() { if (!confirm('Slet sagen permanent?')) return; await supabase.from('sager').delete().eq('id', id); onChanged?.(); if (embedded) onClose?.(); else navigate('/sager') }
   async function bookFreelancer(fId) { await bookFreelancerOgSendMail(fId) }
-  async function fjernFreelancer() { await supabase.from('sager').update({ freelancer_id: null }).eq('id', id); setFreelancer(null); setSag(s => ({ ...s, freelancer_id: null })); toast('Fjernet') }
+  async function fjernFreelancer() { await supabase.from('sager').update({ freelancer_id: null }).eq('id', id); setFreelancer(null); setSag(s => ({ ...s, freelancer_id: null })); onChanged?.(); toast('Fjernet') }
 
   if (!sag) return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>Indlæser...</div>
 
@@ -171,7 +177,9 @@ export default function SagDetalje() {
     <div>
       <ToastContainer toasts={toasts} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div className="back-link" style={{ margin: 0 }} onClick={() => navigate('/sager')}>← Tilbage til sager</div>
+        {embedded
+          ? <div className="back-link" style={{ margin: 0 }} onClick={onClose}>✕ Luk sag</div>
+          : <div className="back-link" style={{ margin: 0 }} onClick={() => navigate('/sager')}>← Tilbage til sager</div>}
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-outline btn-sm" onClick={() => setEditing(!editing)}>{editing ? 'Annuller' : '✏ Rediger sag'}</button>
           <button className="btn btn-red btn-sm" onClick={sletSag}>🗑 Slet</button>

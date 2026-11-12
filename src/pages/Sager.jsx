@@ -1,8 +1,21 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 import { beregnKm } from '../lib/km'
+import SagDetalje from './SagDetalje'
+
+// Statusser som sager kan have (samme som i SagDetalje). Sager uden status vises som "Ny".
+const STATUSSER = [
+  { key: 'ny', label: 'Nye' },
+  { key: 'aktiv', label: 'Aktive' },
+  { key: 'afventer', label: 'Afventer' },
+  { key: 'leveret', label: 'Leveret' },
+  { key: 'afsluttet', label: 'Afsluttet' },
+]
+const statusAf = s => s.status || 'ny'
+// Under denne bredde er der ikke plads til delt visning, så "Se sag" åbner sagen på egen side
+const DELT_VISNING_MIN_BREDDE = 1100
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
 const BBR_TOKEN = 'CPbVQka4R26OfpgOBMBi3sb6DnN63UVWn3kieXz844B6WJ0lxXqR8UPbOrM0eFHJ7vFmav9bw7w5pLM5Pcnk9Ws9Xyusxb7Ze'
@@ -14,16 +27,33 @@ export default function Sager() {
   const [maanedFilter, setMaanedFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [params, setParams] = useSearchParams()
+  const statusFilter = params.get('status') || ''
+  const valgtId = params.get('sag') || ''
   const navigate = useNavigate()
   const { toasts, toast } = useToast()
 
   useEffect(() => { fetchSager() }, [])
 
-  async function fetchSager() {
-    setLoading(true)
+  // Filter og åben sag ligger i URL'en (?status=leveret&sag=...), så de overlever genindlæsning og tilbage-knap
+  function sætParam(navn, værdi) {
+    setParams(p => {
+      const ny = new URLSearchParams(p)
+      if (værdi) ny.set(navn, værdi); else ny.delete(navn)
+      return ny
+    })
+  }
+
+  function åbnSag(id) {
+    if (window.innerWidth < DELT_VISNING_MIN_BREDDE) { navigate(`/sager/${id}`); return }
+    sætParam('sag', id)
+  }
+
+  async function fetchSager({ stille = false } = {}) {
+    if (!stille) setLoading(true)
     const { data: sagerData, error } = await supabase
       .from('sager')
-      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer')
+      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer, noter')
       .order('dato', { ascending: false })
 
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
@@ -51,11 +81,15 @@ export default function Sager() {
     const søgMatch = !search ||
       (s.kunde?.navn || '').toLowerCase().includes(search.toLowerCase()) ||
       (s.maegler_navn || '').toLowerCase().includes(search.toLowerCase()) ||
-      (s.adresse || '').toLowerCase().includes(search.toLowerCase())
+      (s.adresse || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.noter || '').toLowerCase().includes(search.toLowerCase())
     const datoMatch = !datoFilter || s.dato === datoFilter
     const maanedMatch = !maanedFilter || (s.dato && s.dato.startsWith(maanedFilter))
     return søgMatch && datoMatch && maanedMatch
   })
+  const antalPrStatus = filtered.reduce((acc, s) => { acc[statusAf(s)] = (acc[statusAf(s)] || 0) + 1; return acc }, {})
+  const vist = statusFilter ? filtered.filter(s => statusAf(s) === statusFilter) : filtered
+  const delt = !!valgtId
 
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', leveret: 'leveret', ny: 'new', afsluttet: 'done' }[s] || 'new')
   const statusLabel = s => ({ ny: 'Ny', aktiv: 'Aktiv', afventer: 'Afventer', afsluttet: 'Afsluttet', leveret: 'Leveret' }[s] || 'Ny')
@@ -65,7 +99,7 @@ export default function Sager() {
       <ToastContainer toasts={toasts} />
       <div className="page-title">Sager</div>
       <div className="toolbar">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Søg på kunde, mægler eller adresse..." />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Søg på kunde, mægler, adresse eller noter..." />
         <input
           type="month"
           value={maanedFilter}
@@ -85,20 +119,35 @@ export default function Sager() {
         )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Opret sag</button>
       </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+        {[{ key: '', label: 'Alle' }, ...STATUSSER].map(st => {
+          const antal = st.key ? (antalPrStatus[st.key] || 0) : filtered.length
+          const aktiv = statusFilter === st.key
+          return (
+            <button key={st.key || 'alle'} className={`btn btn-sm ${aktiv ? 'btn-primary' : 'btn-outline'}`} onClick={() => sætParam('status', st.key)}>
+              {st.label} <span style={{ opacity: .7, marginLeft: 2 }}>({antal})</span>
+            </button>
+          )
+        })}
+      </div>
+      <div style={delt ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' } : undefined}>
       <div className="card">
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)' }}>Indlæser sager...</div>
-        ) : filtered.length === 0 ? (
+        ) : vist.length === 0 ? (
           <div className="empty-state"><div className="empty-icon">📋</div>Ingen sager fundet</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={delt ? { overflow: 'auto', maxHeight: 'calc(100vh - 120px)' } : { overflowX: 'auto' }}>
             <table>
               <thead>
-                <tr><th>Kunde / Mægler</th><th>Adresse</th><th>Sagsnr.</th><th>Dato</th><th>Type</th><th>Freelancer</th><th>Status</th><th></th></tr>
+                {delt
+                  ? <tr><th>Kunde / Mægler</th><th>Adresse</th><th>Dato</th><th>Status</th></tr>
+                  : <tr><th>Kunde / Mægler</th><th>Adresse</th><th>Sagsnr.</th><th>Dato</th><th>Type</th><th>Freelancer</th><th>Status</th><th></th></tr>}
               </thead>
               <tbody>
-                {filtered.map(s => (
-                  <tr key={s.id} onClick={() => navigate(`/sager/${s.id}`)}>
+                {vist.map(s => (
+                  <tr key={s.id} onClick={() => åbnSag(s.id)}
+                    style={s.id === valgtId ? { background: '#eef2f6', boxShadow: 'inset 3px 0 0 var(--pr)' } : undefined}>
                     <td>
                       {s.kunde?.navn
                         ? <b>{s.kunde.navn}</b>
@@ -107,19 +156,30 @@ export default function Sager() {
                           : <span style={{ color: 'var(--muted)' }}>—</span>
                       }
                     </td>
-                    <td>{s.adresse || '—'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--muted)' }}>{s.maegler_sagsnummer || '—'}</td>
-                    <td>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
-                    <td style={{ textTransform: 'capitalize' }}>{s.type || '—'}</td>
-                    <td>{s.freelancer?.navn || <span style={{ color: 'var(--muted)', fontSize: 12 }}>Ingen</span>}</td>
+                    <td>
+                      {s.adresse || '—'}
+                      {s.noter && (
+                        <div title={s.noter} style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {s.noter}</div>
+                      )}
+                    </td>
+                    {!delt && <td style={{ fontSize: 12, color: 'var(--muted)' }}>{s.maegler_sagsnummer || '—'}</td>}
+                    <td style={{ whiteSpace: 'nowrap' }}>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
+                    {!delt && <td style={{ textTransform: 'capitalize' }}>{s.type || '—'}</td>}
+                    {!delt && <td>{s.freelancer?.navn || <span style={{ color: 'var(--muted)', fontSize: 12 }}>Ingen</span>}</td>}
                     <td><span className={`badge badge-${badgeClass(s.status)}`}>{statusLabel(s.status)}</span></td>
-                    <td onClick={e => e.stopPropagation()}><button className="btn btn-outline btn-sm" onClick={() => navigate(`/sager/${s.id}`)}>Se sag</button></td>
+                    {!delt && <td onClick={e => e.stopPropagation()}><button className="btn btn-outline btn-sm" onClick={() => åbnSag(s.id)}>Se sag</button></td>}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+      </div>
+      {delt && (
+        <div style={{ position: 'sticky', top: 70, maxHeight: 'calc(100vh - 86px)', overflowY: 'auto', background: 'var(--bg)', border: '.5px solid var(--brd)', borderRadius: 12, padding: 16 }}>
+          <SagDetalje key={valgtId} sagId={valgtId} embedded onClose={() => sætParam('sag', '')} onChanged={() => fetchSager({ stille: true })} />
+        </div>
+      )}
       </div>
       {showModal && <OpretSagModal onClose={() => setShowModal(false)} onSaved={() => { setShowModal(false); fetchSager(); toast('✓ Sag oprettet!') }} toast={toast} />}
     </div>
