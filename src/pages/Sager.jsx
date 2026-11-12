@@ -53,7 +53,7 @@ export default function Sager() {
     if (!stille) setLoading(true)
     const { data: sagerData, error } = await supabase
       .from('sager')
-      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer')
+      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer, noter')
       .order('dato', { ascending: false })
 
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
@@ -81,7 +81,8 @@ export default function Sager() {
     const søgMatch = !search ||
       (s.kunde?.navn || '').toLowerCase().includes(search.toLowerCase()) ||
       (s.maegler_navn || '').toLowerCase().includes(search.toLowerCase()) ||
-      (s.adresse || '').toLowerCase().includes(search.toLowerCase())
+      (s.adresse || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.noter || '').toLowerCase().includes(search.toLowerCase())
     const datoMatch = !datoFilter || s.dato === datoFilter
     const maanedMatch = !maanedFilter || (s.dato && s.dato.startsWith(maanedFilter))
     return søgMatch && datoMatch && maanedMatch
@@ -98,7 +99,7 @@ export default function Sager() {
       <ToastContainer toasts={toasts} />
       <div className="page-title">Sager</div>
       <div className="toolbar">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Søg på kunde, mægler eller adresse..." />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Søg på kunde, mægler, adresse eller noter..." />
         <input
           type="month"
           value={maanedFilter}
@@ -155,7 +156,12 @@ export default function Sager() {
                           : <span style={{ color: 'var(--muted)' }}>—</span>
                       }
                     </td>
-                    <td>{s.adresse || '—'}</td>
+                    <td>
+                      {s.adresse || '—'}
+                      {s.noter && (
+                        <div title={s.noter} style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {s.noter}</div>
+                      )}
+                    </td>
                     {!delt && <td style={{ fontSize: 12, color: 'var(--muted)' }}>{s.maegler_sagsnummer || '—'}</td>}
                     <td style={{ whiteSpace: 'nowrap' }}>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
                     {!delt && <td style={{ textTransform: 'capitalize' }}>{s.type || '—'}</td>}

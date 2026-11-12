@@ -136,7 +136,7 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
     if (editForm.adresse !== sag.adresse) await gemKmForSag(id, editForm.adresse)
     setSaving(false); setEditing(false); fetchSag(); toast('✓ Sag opdateret')
   }
-  async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); toast('✓ Noter gemt') }
+  async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); onChanged?.(); toast('✓ Noter gemt') }
   async function saveMwNummer() { await supabase.from('sager').update({ maegler_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, maegler_sagsnummer: mwNummer })); onChanged?.(); toast('✓ Gemt') }
 
   async function hentMwSag() {
