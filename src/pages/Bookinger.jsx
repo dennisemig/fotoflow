@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { sendMail } from '../lib/api'
 import { useToast, ToastContainer } from '../hooks/useToast'
 import { gemKmForSag } from '../lib/km'
 
@@ -65,47 +66,35 @@ export default function Bookinger() {
     await supabase.from('bookings').update({ status: 'godkendt', sag_id: sag.id }).eq('id', booking.id)
 
     // Send bekræftelsesmail til mægler
-    await fetch('/api/send-notification', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'booking_bekraeft',
-        mægler: {
-          email: booking.maegler_email,
-          maegler_navn: booking.maegler_navn,
-          adresse: booking.adresse,
-          dato: booking.dato ? new Date(booking.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '',
-          tidspunkt: booking.tidspunkt,
-          pakke: booking.pakke,
-          tillaeg: (booking.tillaeg || []).join(', '),
-        }
-      })
-    }).catch(() => {})
+    const mail = await sendMail('booking_bekraeft', {
+      email: booking.maegler_email,
+      maegler_navn: booking.maegler_navn,
+      adresse: booking.adresse,
+      dato: booking.dato ? new Date(booking.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '',
+      tidspunkt: booking.tidspunkt,
+      pakke: booking.pakke,
+      tillaeg: (booking.tillaeg || []).join(', '),
+    })
 
-    toast('✓ Booking godkendt – sag oprettet og bekræftelsesmail sendt!')
+    if (mail.ok) toast('✓ Booking godkendt – sag oprettet og bekræftelsesmail sendt!')
+    else toast('Booking godkendt og sag oprettet, men mailen til mægleren fejlede: ' + mail.error, 'error')
     fetchBookinger()
   }
 
   async function sætPåHold(booking, bemærkning) {
     await supabase.from('bookings').update({ status: 'afventer_selger', hold_bemærkning: bemærkning || null }).eq('id', booking.id)
 
-    await fetch('/api/send-notification', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'booking_afventer_selger',
-        mægler: {
-          email: booking.maegler_email,
-          maegler_navn: booking.maegler_navn,
-          adresse: booking.adresse,
-          bemærkning: bemærkning || null,
-        }
-      })
-    }).catch(() => {})
+    const mail = await sendMail('booking_afventer_selger', {
+      email: booking.maegler_email,
+      maegler_navn: booking.maegler_navn,
+      adresse: booking.adresse,
+      bemærkning: bemærkning || null,
+    })
 
     setHoldDialog(null)
     setHoldBemærkning('')
-    toast('Booking sat på hold — mægler er notificeret')
+    if (mail.ok) toast('Booking sat på hold — mægler er notificeret')
+    else toast('Booking sat på hold, men mailen til mægleren fejlede: ' + mail.error, 'error')
     fetchBookinger()
   }
 
@@ -114,21 +103,15 @@ export default function Bookinger() {
     await supabase.from('bookings').update({ status: 'afvist' }).eq('id', booking.id)
 
     // Send afvisningsmail til mægler
-    await fetch('/api/send-notification', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'booking_afvist',
-        mægler: {
-          email: booking.maegler_email,
-          maegler_navn: booking.maegler_navn,
-          adresse: booking.adresse,
-          dato: booking.dato ? new Date(booking.dato + 'T12:00:00').toLocaleDateString('da-DK') : '',
-        }
-      })
-    }).catch(() => {})
+    const mail = await sendMail('booking_afvist', {
+      email: booking.maegler_email,
+      maegler_navn: booking.maegler_navn,
+      adresse: booking.adresse,
+      dato: booking.dato ? new Date(booking.dato + 'T12:00:00').toLocaleDateString('da-DK') : '',
+    })
 
-    toast('Booking afvist')
+    if (mail.ok) toast('Booking afvist')
+    else toast('Booking afvist, men mailen til mægleren fejlede: ' + mail.error, 'error')
     fetchBookinger()
   }
 

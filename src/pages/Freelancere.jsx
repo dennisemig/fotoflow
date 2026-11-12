@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
+import { apiFetch } from '../lib/api'
 
 export default function Freelancere() {
   const [freelancere, setFreelancere] = useState([])
@@ -117,7 +118,7 @@ function TilfoejFreelancerModal({ onClose, onSaved, toast }) {
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 8000)
-      const inviteRes = await fetch('/api/invite-freelancer', {
+      const inviteRes = await apiFetch('/api/invite-freelancer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: form.email, navn: form.navn, freelancer_id: fl?.id }),

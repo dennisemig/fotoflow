@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/api'
 
 const TAGS = [
   'Alrum', 'Andet', 'Badeværelse', 'Bryggers', 'Disponibelt rum',
@@ -130,7 +131,7 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, mwEndpoint
         const { data } = await supabase.storage.from('sager').createSignedUrl(u.dropbox_path, 86400)
         if (data?.signedUrl) billeder.push({ navn: u.filnavn, url: data.signedUrl, tag: u.bruger_tag || 'Billede' })
       }
-      const r = await fetch('/api/mindworking', {
+      const r = await apiFetch('/api/mindworking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,15 +1,45 @@
-export default async function handler(req, res) {
-  const SUPABASE_URL = process.env.VITE_SUPABASE_URL
-  const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY
+import crypto from 'node:crypto'
+import { sbRest } from './_lib/supabase-server.js'
+import { kraevLogin } from './_lib/auth.js'
 
-  // Hent sager fra Supabase
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/sager?select=id,adresse,dato,tidspunkt,tidspunkt_slut,status,type,maegler_navn,maegler_firma,noter&status=neq.afsluttet&order=dato.asc`, {
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`
-    }
-  })
-  const sager = await r.json()
+// Kalender-abonnement (iCal). Kræver et hemmeligt token i linket:
+//   /api/kalender-feed?token=<hemmeligt>
+// Tokenet er KALENDER_TOKEN fra Vercel, eller afledt af service key hvis den ikke er sat.
+// Det fulde link kan hentes af en logget ind bruger med /api/kalender-feed?link=1.
+function feedToken() {
+  if (process.env.KALENDER_TOKEN) return process.env.KALENDER_TOKEN
+  const key = process.env.SUPABASE_SERVICE_KEY
+  if (!key) return null
+  return crypto.createHmac('sha256', key).update('fotoflow-kalender-feed').digest('hex').slice(0, 32)
+}
+
+function sammeToken(a, b) {
+  const ba = Buffer.from(String(a)), bb = Buffer.from(String(b))
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb)
+}
+
+export default async function handler(req, res) {
+  const forventet = feedToken()
+  if (!forventet) return res.status(500).send('Kalender-feed er ikke konfigureret')
+
+  if (req.query?.link === '1') {
+    const user = await kraevLogin(req, res)
+    if (!user) return
+    const APP_URL = process.env.VITE_APP_URL || 'https://app.vaniagraphics.dk'
+    return res.status(200).json({ url: `${APP_URL}/api/kalender-feed?token=${forventet}` })
+  }
+
+  if (!sammeToken(req.query?.token || '', forventet)) {
+    return res.status(401).send('Ugyldigt eller manglende token')
+  }
+
+  let sager
+  try {
+    sager = await sbRest('sager?select=id,adresse,dato,tidspunkt,tidspunkt_slut,status,type,maegler_navn,maegler_firma,noter&status=neq.afsluttet&order=dato.asc')
+  } catch (e) {
+    console.error('Kalender-feed fejl:', e)
+    return res.status(500).send('Kunne ikke hente sager')
+  }
 
   // Generer iCal indhold
   const now = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z'
