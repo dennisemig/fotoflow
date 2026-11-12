@@ -41,6 +41,7 @@ function AppRoutes() {
       <Route path="/set-password" element={<SetPassword />} />
       <Route path="/book/:slug" element={<Booking />} />
       <Route path="/levering/:token" element={<Levering />} />
+      <Route path="/godkend/:token" element={<Levering preview />} />
       <Route path="/" element={<Protected><Layout /></Protected>}>
         <Route index element={<Dashboard />} />
         <Route path="sager" element={<Sager />} />

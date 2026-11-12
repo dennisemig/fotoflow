@@ -92,6 +92,24 @@ export default function SagDetalje() {
     }
   }
 
+  // Godkendelseslink: deler billederne FØR levering, uden mail og uden at ændre status.
+  // Bruger sin egen token (preview_token), så linket ikke bliver til leveringslinket.
+  async function lavGodkendelsesLink() {
+    let token = sag.preview_token
+    let udloeber = sag.preview_udloeber
+    const udloebet = udloeber && new Date(udloeber) < new Date()
+    if (!token || udloebet) {
+      token = crypto.randomUUID()
+      udloeber = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      const { error } = await supabase.from('sager').update({ preview_token: token, preview_udloeber: udloeber }).eq('id', id)
+      if (error) { toast('Kunne ikke lave link: ' + error.message); return }
+      setSag(s => ({ ...s, preview_token: token, preview_udloeber: udloeber }))
+    }
+    const link = `${window.location.origin}/godkend/${token}`
+    try { await navigator.clipboard.writeText(link); toast('✓ Godkendelseslink kopieret') }
+    catch { window.prompt('Kopiér linket:', link) }
+  }
+
   async function markerFaktureret() {
     if (!confirm(sag.faktureret ? 'Marker sagen som IKKE faktureret?' : 'Marker sagen som faktureret?')) return
     setFakturerer(true)
@@ -261,6 +279,19 @@ export default function SagDetalje() {
                 <button key={s} onClick={() => updateStatus(s)} className={`btn btn-sm ${sag.status === s ? 'btn-primary' : 'btn-outline'}`}>{statusLabel(s)}</button>
               ))}
             </div>
+            {sag.status !== 'leveret' && sag.status !== 'afsluttet' && (
+              <div style={{ marginBottom: 8 }}>
+                <button onClick={lavGodkendelsesLink} className="btn btn-sm btn-outline" style={{ width: '100%', justifyContent: 'center' }}>
+                  🔗 Kopiér link til godkendelse (ingen mail)
+                </button>
+                {sag.preview_token && (
+                  <a href={`${window.location.origin}/godkend/${sag.preview_token}`} target="_blank" rel="noreferrer"
+                    style={{ display: 'block', textAlign: 'center', fontSize: 11, marginTop: 4, color: '#6b7280' }}>
+                    Åbn godkendelseslinket{sag.preview_udloeber ? ` · gælder til ${new Date(sag.preview_udloeber).toLocaleDateString('da-DK')}` : ''}
+                  </a>
+                )}
+              </div>
+            )}
             {sag.status !== 'leveret' && sag.status !== 'afsluttet' ? (
               <button onClick={leverSag} className="btn btn-sm" style={{ background: '#2e7d4f', color: '#fff', width: '100%', justifyContent: 'center' }}>
                 📸 Marker som leveret – send mail til mægler
