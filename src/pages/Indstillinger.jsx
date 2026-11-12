@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
+import { apiFetch } from '../lib/api'
 
 const DAGE = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag']
 const TIDER = ['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00']
@@ -23,6 +24,7 @@ export default function Indstillinger() {
   const [form, setForm] = useState({ full_name: '', telefon: '', startadresse: '' })
   const [arbejdstider, setArbejdstider] = useState(DEFAULT_ARBEJDSTIDER)
   const [saving, setSaving] = useState(false)
+  const [feedLink, setFeedLink] = useState('')
   const [savingTider, setSavingTider] = useState(false)
   const [nytPassword, setNytPassword] = useState('')
   const [bekraeftPassword, setBekraeftPassword] = useState('')
@@ -220,11 +222,25 @@ export default function Indstillinger() {
           <div className="ok-box" style={{ marginBottom: 12 }}>✓ Resend er konfigureret – mails sendes fra dennis@vaniagraphics.dk</div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>Daglig mail med næste dags opgaver sendes automatisk kl. 19:00.</div>
           <button className="btn btn-outline btn-sm" onClick={async () => {
-            const r = await fetch('/api/daglig-mail', { method: 'GET', headers: { Authorization: 'Bearer VaniaGraphics2026!' } })
+            const r = await apiFetch('/api/daglig-mail')
             const d = await r.json()
             if (d.success) toast(d.message || `✓ Testmail sendt – ${d.sager} opgave(r) i morgen!`)
             else toast('Fejl: ' + d.error, 'error')
           }}>📧 Send testmail nu</button>
+        </div>
+
+        {/* KALENDER-ABONNEMENT */}
+        <div className="card">
+          <div className="section-hd">Kalender-abonnement</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>Abonnér på dine sager i fx Google- eller Apple-kalender. Linket er hemmeligt – del det ikke.</div>
+          {feedLink
+            ? <input readOnly value={feedLink} onFocus={e => e.target.select()} style={{ width: '100%', fontSize: 12 }} />
+            : <button className="btn btn-outline btn-sm" onClick={async () => {
+                const r = await apiFetch('/api/kalender-feed?link=1')
+                const d = await r.json().catch(() => ({}))
+                if (d.url) setFeedLink(d.url)
+                else toast('Fejl: ' + (d.error || 'kunne ikke hente link'), 'error')
+              }}>📅 Vis kalender-link</button>}
         </div>
 
         {/* MINDWORKING */}

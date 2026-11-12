@@ -1,5 +1,9 @@
+import { kraevLogin } from './_lib/auth.js'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  const user = await kraevLogin(req, res, { ejer: true })
+  if (!user) return
 
   const { email, navn, freelancer_id } = req.body
   if (!email || !navn) return res.status(400).json({ error: 'Mangler email eller navn' })
@@ -7,8 +11,6 @@ export default async function handler(req, res) {
   const SUPABASE_URL = process.env.VITE_SUPABASE_URL
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 
-  console.log('Invite start – email:', email, 'URL:', SUPABASE_URL?.slice(0, 30))
-  console.log('Service key tilgængelig:', !!SERVICE_KEY)
 
   if (!SERVICE_KEY) return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY mangler i Vercel' })
 
@@ -30,12 +32,11 @@ export default async function handler(req, res) {
     })
 
     const data = await r.json()
-    console.log('Invite svar:', JSON.stringify(data))
 
     if (!r.ok) throw new Error(data.message || data.error || 'Invitation fejlede')
 
     // Opret profil
-    await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+    const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -50,6 +51,7 @@ export default async function handler(req, res) {
         role: 'freelancer'
       })
     })
+    if (!pr.ok) console.error('Kunne ikke oprette profil:', pr.status, await pr.text())
 
     return res.status(200).json({ success: true, userId: data.id })
   } catch (e) {

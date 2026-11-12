@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { renderFloorplanSVG } from '../floorplanRenderer'
+import { apiFetch } from '../lib/api'
 
 export default function FloorplanRedraw() {
   const [imageBase64, setImageBase64] = useState(null)
@@ -42,7 +43,7 @@ export default function FloorplanRedraw() {
     setStep('analysing')
 
     try {
-      const res = await fetch('/api/redraw-floorplan', {
+      const res = await apiFetch('/api/redraw-floorplan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64, mediaType, address })

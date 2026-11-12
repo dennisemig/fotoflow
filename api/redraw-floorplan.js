@@ -2,8 +2,12 @@
 // Trin 1: AI analyserer skitse → JSON
 // Trin 2: Din egen kode renderer JSON → præcis SVG
 
+import { kraevLogin } from './_lib/auth.js'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  const user = await kraevLogin(req, res)
+  if (!user) return
 
   const { imageBase64, mediaType = 'image/jpeg', address = '' } = req.body
   if (!imageBase64) return res.status(400).json({ error: 'Mangler imageBase64' })

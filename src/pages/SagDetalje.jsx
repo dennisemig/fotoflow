@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { sendMail, apiFetch } from '../lib/api'
 import { useToast, ToastContainer } from '../hooks/useToast'
 import BilledeGalleri from './BilledeGalleri'
 import { gemKmForSag } from '../lib/km'
@@ -49,19 +50,13 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
     onChanged?.()
     setFreelancer(fl); setSag(s => ({ ...s, freelancer_id: fId })); setShowBookModal(false)
     if (fl?.email) {
-      await fetch('/api/send-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'freelancer_booking',
-          mægler: {
-            email: fl.email, navn: fl.navn, adresse: sag.adresse,
-            dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—',
-            tidspunkt: sag.tidspunkt ? String(sag.tidspunkt).slice(0, 5) : '—',
-            type: sag.type, noter: sag.noter
-          }
-        })
-      }).catch(() => {})
+      const mail = await sendMail('freelancer_booking', {
+        email: fl.email, navn: fl.navn, adresse: sag.adresse,
+        dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—',
+        tidspunkt: sag.tidspunkt ? String(sag.tidspunkt).slice(0, 5) : '—',
+        type: sag.type, noter: sag.noter
+      })
+      if (!mail.ok) { toast(`${fl?.navn} booket, men mailen fejlede: ${mail.error}`, 'error'); return }
     }
     toast(`✓ ${fl?.navn} booket – mail sendt!`)
   }
@@ -78,20 +73,14 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
     const modtager = sag.maegler_email || kunde?.email
     const navn = sag.maegler_navn || kunde?.navn
     if (modtager) {
-      await fetch('/api/send-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'levering',
-          mægler: {
-            email: modtager, navn, adresse: sag.adresse,
-            dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—',
-            antal_billeder: count || 0,
-            galleri_link: galleriLink
-          }
-        })
-      }).catch(() => {})
-      toast(`✓ Sag leveret – gallerilink sendt til mægler!`)
+      const mail = await sendMail('levering', {
+        email: modtager, navn, adresse: sag.adresse,
+        dato: sag.dato ? new Date(sag.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—',
+        antal_billeder: count || 0,
+        galleri_link: galleriLink
+      })
+      if (mail.ok) toast(`✓ Sag leveret – gallerilink sendt til mægler!`)
+      else toast('Sag markeret som leveret, men mailen til mægleren fejlede: ' + mail.error, 'error')
     } else {
       toast('✓ Sag markeret som leveret')
     }
@@ -143,7 +132,7 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
     if (!mwNummer) return
     setMwLoading(true)
     try {
-      const r = await fetch('/api/mindworking', {
+      const r = await apiFetch('/api/mindworking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'get_case', caseNo: mwNummer })
