@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 import { gemKmForSag } from '../lib/km'
+import { findKundeForMaeglerEmail, tilfoejMaeglerHvisNy } from '../lib/maeglere'
 
 export default function Bookinger() {
   const [bookinger, setBookinger] = useState([])
@@ -26,9 +27,9 @@ export default function Bookinger() {
   }
 
   async function godkend(booking) {
-    // Slå kunde op via maegler_firma
-    let kunde_id = null
-    if (booking.maegler_firma) {
+    // Slå kunde op: først via mæglerens email på kundernes mæglerlister, ellers via maegler_firma
+    let kunde_id = await findKundeForMaeglerEmail(booking.maegler_email)
+    if (!kunde_id && booking.maegler_firma) {
       const { data: kundeMatch } = await supabase
         .from('kunder')
         .select('id')
@@ -60,6 +61,9 @@ export default function Bookinger() {
 
     // Beregn km til kørselsrapporten (i baggrunden)
     gemKmForSag(sag.id, booking.adresse)
+
+    // Ny mægler hos kunden → tilføj til kundeprofilens mæglerliste
+    if (kunde_id) await tilfoejMaeglerHvisNy(kunde_id, { navn: booking.maegler_navn, email: booking.maegler_email })
 
     // Opdater booking status
     await supabase.from('bookings').update({ status: 'godkendt', sag_id: sag.id }).eq('id', booking.id)
