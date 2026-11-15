@@ -121,7 +121,7 @@ export default function Sager() {
         )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Opret sag</button>
       </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div className="chip-raekke" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
         {[{ key: '', label: 'Alle' }, ...STATUSSER].map(st => {
           const antal = st.key ? (antalPrStatus[st.key] || 0) : filtered.length
           const aktiv = statusFilter === st.key
@@ -139,7 +139,30 @@ export default function Sager() {
         ) : vist.length === 0 ? (
           <div className="empty-state"><div className="empty-icon">📋</div>Ingen sager fundet</div>
         ) : (
-          <div style={delt ? { overflow: 'auto', maxHeight: 'calc(100vh - 120px)' } : { overflowX: 'auto' }}>
+          <>
+          {/* Mobil: kort i stedet for tabel */}
+          <div className="kun-mobil">
+            {vist.map(s => (
+              <div key={s.id} className="sag-kort" onClick={() => åbnSag(s.id)}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 15 }}>
+                    {s.adresse || '—'}
+                    {harNoegleTillaeg(s) && <span title="Nøgleafhentning" style={{ marginLeft: 6 }}>🔑</span>}
+                  </div>
+                  <span className={`badge badge-${badgeClass(s.status)}`} style={{ flexShrink: 0 }}>{statusLabel(s.status)}</span>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>
+                  {s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Ingen dato'}
+                  {' · '}{s.kunde?.navn || s.maegler_navn || '—'}
+                  {s.freelancer?.navn && <> · 📷 {s.freelancer.navn}</>}
+                </div>
+                {s.noter && (
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {s.noter}</div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="kun-computer" style={delt ? { overflow: 'auto', maxHeight: 'calc(100vh - 120px)' } : { overflowX: 'auto' }}>
             <table>
               <thead>
                 {delt
@@ -176,6 +199,7 @@ export default function Sager() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
       {delt && (

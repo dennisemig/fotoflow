@@ -145,12 +145,12 @@ const sagsForDay = day => {
             <div style={{ fontWeight: 600, fontSize: 13, textTransform: 'capitalize', color: 'var(--pr)' }}>{monthName}</div>
             <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--pr)', padding: '2px 8px', borderRadius: 6 }}>›</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 2, marginBottom: 4 }}>
             {['Ma','Ti','On','To','Fr','Lø','Sø'].map(d => (
               <div key={d} style={{ textAlign: 'center', fontSize: 9, color: 'var(--muted)', fontWeight: 600, padding: '2px 0' }}>{d}</div>
             ))}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 2 }}>
             {[...Array(firstDay)].map((_, i) => <div key={`e${i}`} />)}
             {[...Array(daysInMonth)].map((_, i) => {
               const day = i + 1
