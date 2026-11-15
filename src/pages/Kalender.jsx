@@ -95,12 +95,12 @@ export default function Kalender() {
           <div style={{ fontWeight: 700, fontSize: 16, textTransform: 'capitalize', color: 'var(--pr)' }}>{monthName}</div>
           <button className="btn btn-outline btn-sm" onClick={nextMonth}>Næste &#8250;</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3, marginBottom: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 3, marginBottom: 4 }}>
           {['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'].map(d => (
             <div key={d} style={{ textAlign: 'center', fontSize: 11, color: 'var(--muted)', fontWeight: 600, padding: '4px 0' }}>{d}</div>
           ))}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 3 }}>
           {Array.from({ length: firstDay }).map((_, i) => <div key={'e' + i} />)}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const day = i + 1
@@ -109,7 +109,7 @@ export default function Kalender() {
             const daySager = sagsForDay(day)
             const isWeekend = ((firstDay + i) % 7) >= 5
             return (
-              <div key={day}
+              <div key={day} className="kal-dag"
                 onClick={() => { setSelectedDate(dayStr); setShowModal(true) }}
                 onContextMenu={e => { e.preventDefault(); setBlokerDato(dayStr); setShowBlokerModal(true) }}
                 style={{ minHeight: 72, background: isToday ? '#eef4f8' : isWeekend ? '#fafafa' : 'transparent', borderRadius: 8, padding: '5px 6px', border: isToday ? '2px solid var(--pr)' : '.5px solid var(--brd)', cursor: 'pointer' }}
@@ -133,7 +133,7 @@ export default function Kalender() {
                     🚫 {b.tidspunkt ? String(b.tidspunkt).slice(0,5) : ''}{b.tidspunkt_slut ? `–${String(b.tidspunkt_slut).slice(0,5)}` : ''}{!b.tidspunkt ? 'Hele dagen' : ''} {b.beskrivelse || ''}
                   </div>
                 ))}
-                {daySager.length === 0 && blokeringerForDay(day).length === 0 && <div style={{ fontSize: 9, color: '#ddd', marginTop: 2 }}>+ Tilføj</div>}
+                {daySager.length === 0 && blokeringerForDay(day).length === 0 && <div className="kun-computer" style={{ fontSize: 9, color: '#ddd', marginTop: 2 }}>+ Tilføj</div>}
               </div>
             )
           })}

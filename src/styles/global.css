@@ -69,3 +69,37 @@ td{padding:10px 12px}
 .empty-icon{font-size:36px;margin-bottom:10px}
 .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:#e8edf1;color:var(--pr);margin-right:4px;font-weight:500}
 @media(max-width:768px){.drawer{display:none}.main-content{margin-left:0}.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+/* Layout: topbar + indhold (Layout.jsx). Safe-area så intet gemmer sig bag iPhonens notch/hjemmebjælke i hjemmeskærm-appen */
+.topbar{padding:10px 28px 10px 16px;padding-top:calc(10px + env(safe-area-inset-top))}
+.layout-content{padding:24px 28px;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.sidebar{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+.kun-mobil{display:none}
+@media(max-width:900px){
+  .topbar{padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top))}
+  .layout-content{padding:14px 12px;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+  .page-title{font-size:18px;margin-bottom:14px}
+  .card{padding:12px 14px}
+  /* 16px forhindrer at iPhone zoomer ind, når man trykker i et felt */
+  input,select,textarea,.form-group input,.form-group select,.form-group textarea,.toolbar input{font-size:16px}
+  .toolbar input{max-width:none;flex:1 1 100%}
+  .btn{min-height:36px}
+  .btn-sm{padding:8px 12px;font-size:13px}
+  .modal{padding:20px 16px;border-radius:14px}
+  .modal-close{font-size:22px;padding:6px}
+}
+@media(max-width:700px){
+  .kun-mobil{display:block}
+  .kun-computer{display:none!important}
+}
+@media(max-width:900px){.toolbar input[type=month],.toolbar input[type=date]{flex:1 1 40%;min-width:0}}
+/* Sager-liste som kort på mobil */
+.sag-kort{display:block;padding:12px 2px;border-bottom:.5px solid var(--brd);cursor:pointer}
+.sag-kort:last-child{border-bottom:none}
+.sag-kort:active{background:#f0f4f8}
+@media(max-width:700px){.chip-raekke{flex-wrap:nowrap!important;overflow-x:auto;margin-left:-12px;margin-right:-12px;padding:0 12px 2px;scrollbar-width:none}.chip-raekke::-webkit-scrollbar{display:none}.chip-raekke>*{flex-shrink:0}}
+@media(max-width:700px){
+  .kal-dag{padding:3px 2px!important;min-height:58px!important;border-radius:6px!important}
+  .kal-dag>div{font-size:8px!important;padding-left:2px!important;padding-right:2px!important}
+  .kal-dag>div:first-child{font-size:12px!important}
+  .grid4{grid-template-columns:1fr 1fr!important;gap:10px}
+}
