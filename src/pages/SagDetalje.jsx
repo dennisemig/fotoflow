@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 import BilledeGalleri from './BilledeGalleri'
 import { gemKmForSag } from '../lib/km'
+import { hentMaeglere, gemMaegler, tilfoejMaeglerHvisNy, normEmail } from '../lib/maeglere'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
 // Kan bruges som egen side (/sager/:id) eller indlejret i højre halvdel af Sager-listen
@@ -26,6 +27,8 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
   const [showBookModal, setShowBookModal] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({})
+  const [maeglere, setMaeglere] = useState([]) // kundens mæglere
+  const [nyMaegler, setNyMaegler] = useState(null) // formular til ny mægler, null = lukket
   const { toasts, toast } = useToast()
 
   useEffect(() => {
@@ -37,7 +40,7 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
     if (!data) return
     setSag(data); setNoter(data.noter || ''); setMwNummer(data.maegler_sagsnummer || '')
     setEditForm({ adresse: data.adresse || '', dato: data.dato || '', tidspunkt: data.tidspunkt ? String(data.tidspunkt).slice(0,5) : '', tidspunkt_slut: data.tidspunkt_slut ? String(data.tidspunkt_slut).slice(0,5) : '', type: data.type || 'ejendom', maks_billeder: data.maks_billeder || 20, kunde_id: data.kunde_id || '', freelancer_id: data.freelancer_id || '' })
-    if (data.kunde_id) { const { data: k } = await supabase.from('kunder').select('*').eq('id', data.kunde_id).single(); setKunde(k); console.log('Kunde data:', JSON.stringify(k)) }
+    if (data.kunde_id) { const { data: k } = await supabase.from('kunder').select('*').eq('id', data.kunde_id).single(); setKunde(k); hentMaeglere(data.kunde_id).then(setMaeglere) } else { setKunde(null); setMaeglere([]) }
     if (data.freelancer_id) { const { data: f } = await supabase.from('freelancere').select('*').eq('id', data.freelancer_id).single(); setFreelancer(f) }
   }
   async function fetchFreelancere() { const { data } = await supabase.from('freelancere').select('id, navn, email').eq('aktiv', true); setFreelancere(data || []) }
@@ -67,7 +70,8 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
   }
 
   async function leverSag() {
-    if (!confirm('Marker sagen som leveret og send gallerilink til mægler?')) return
+    const tilNavn = sag.maegler_navn || kunde?.navn, tilEmail = sag.maegler_email || kunde?.email
+    if (!confirm(tilEmail ? `Marker sagen som leveret og send gallerilink til ${tilNavn || 'mægler'} (${tilEmail})?` : 'Marker sagen som leveret? (Der er ingen email på sagen, så der sendes ingen mail.)')) return
     const token = crypto.randomUUID()
     const udloeber = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     const galleriLink = `${window.location.origin}/levering/${token}`
@@ -159,6 +163,34 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
       toast('Fejl: ' + e.message, 'error')
     }
     setMwLoading(false)
+  }
+  // Sæt mægleren på sagen – leveringsmailen går til sag.maegler_email
+  async function vaelgMaegler(m) {
+    const ændring = { maegler_navn: m.navn, maegler_email: m.email || null }
+    if (!sag.maegler_firma && kunde?.navn) ændring.maegler_firma = kunde.navn
+    const { error } = await supabase.from('sager').update(ændring).eq('id', id)
+    if (error) { toast('Kunne ikke skifte mægler: ' + error.message, 'error'); return }
+    setSag(s => ({ ...s, ...ændring })); onChanged?.()
+    toast(`✓ Mægler: ${m.navn}`)
+  }
+  async function opretOgVaelgMaegler() {
+    if (!nyMaegler.navn?.trim()) { toast('Skriv mæglerens navn', 'error'); return }
+    const mail = normEmail(nyMaegler.email)
+    const findes = mail && maeglere.find(m => m.email === mail)
+    let m = findes
+    if (!findes) {
+      const { data, error } = await gemMaegler(sag.kunde_id, nyMaegler)
+      if (error) { toast('Kunne ikke gemme mægler: ' + error.message, 'error'); return }
+      m = data
+      setMaeglere(ms => [...ms, data].sort((a, b) => a.navn.localeCompare(b.navn)))
+    }
+    setNyMaegler(null)
+    await vaelgMaegler(m)
+  }
+  async function gemSagensMaeglerPaaKunde() {
+    await tilfoejMaeglerHvisNy(sag.kunde_id, { navn: sag.maegler_navn, email: sag.maegler_email })
+    setMaeglere(await hentMaeglere(sag.kunde_id))
+    toast('✓ Gemt i kundeprofilen')
   }
   async function updateStatus(status) { await supabase.from('sager').update({ status }).eq('id', id); setSag(s => ({ ...s, status })); onChanged?.(); toast('✓ Status opdateret') }
   async function sletSag() { if (!confirm('Slet sagen permanent?')) return; await supabase.from('sager').delete().eq('id', id); onChanged?.(); if (embedded) onClose?.(); else navigate('/sager') }
@@ -271,14 +303,51 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
             </div>
           )}
 
-          {!kunde && (sag.maegler_navn || sag.maegler_email) && (
-            <div className="card">
-              <div className="section-hd">Mægler</div>
-              <div style={{ marginBottom: 6 }}><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Navn</div><div style={{ fontWeight: 600 }}>{sag.maegler_navn || '—'}</div></div>
-              <div style={{ marginBottom: 6 }}><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Firma</div><div>{sag.maegler_firma || '—'}</div></div>
-              <div><div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Email</div><div style={{ color: 'var(--pr)' }}>{sag.maegler_email || '—'}</div></div>
-            </div>
-          )}
+          {(kunde || sag.maegler_navn || sag.maegler_email) && (() => {
+            const valgt = maeglere.find(m => m.email && m.email === normEmail(sag.maegler_email))
+            const ukendt = kunde && sag.maegler_email && !valgt
+            const L = { fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }
+            return (
+              <div className="card">
+                <div className="section-hd">Mægler</div>
+                {kunde && (
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label>Billedlinks sendes til</label>
+                    <select value={nyMaegler ? '__ny' : (valgt?.id || '')} onChange={e => {
+                      const v = e.target.value
+                      if (v === '__ny') { setNyMaegler({ navn: '', email: '', telefon: '' }); return }
+                      setNyMaegler(null)
+                      const m = maeglere.find(x => x.id === v)
+                      if (m) vaelgMaegler(m)
+                    }}>
+                      <option value="" disabled>{sag.maegler_email ? `${sag.maegler_navn || sag.maegler_email} (ikke på kundens liste)` : '— Vælg mægler —'}</option>
+                      {maeglere.map(m => <option key={m.id} value={m.id}>{m.navn}{m.email ? ` · ${m.email}` : ' · ingen email'}</option>)}
+                      <option value="__ny">+ Ny mægler…</option>
+                    </select>
+                  </div>
+                )}
+                {nyMaegler && (
+                  <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                    <div className="form-group" style={{ marginBottom: 8 }}><label>Navn *</label><input autoFocus value={nyMaegler.navn} onChange={e => setNyMaegler(f => ({ ...f, navn: e.target.value }))} /></div>
+                    <div className="form-group" style={{ marginBottom: 8 }}><label>Email</label><input type="email" value={nyMaegler.email} onChange={e => setNyMaegler(f => ({ ...f, email: e.target.value }))} /></div>
+                    <div className="form-group" style={{ marginBottom: 8 }}><label>Telefon</label><input value={nyMaegler.telefon} onChange={e => setNyMaegler(f => ({ ...f, telefon: e.target.value }))} /></div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Gemmes også i kundeprofilen hos {kunde?.navn}.</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-green btn-sm" onClick={opretOgVaelgMaegler}>Gem og vælg</button>
+                      <button className="btn btn-outline btn-sm" onClick={() => setNyMaegler(null)}>Annuller</button>
+                    </div>
+                  </div>
+                )}
+                <div style={{ marginBottom: 6 }}><div style={L}>Navn</div><div style={{ fontWeight: 600 }}>{sag.maegler_navn || '—'}</div></div>
+                {!kunde && <div style={{ marginBottom: 6 }}><div style={L}>Firma</div><div>{sag.maegler_firma || '—'}</div></div>}
+                <div style={{ marginBottom: valgt?.telefon || ukendt ? 6 : 0 }}><div style={L}>Email</div><div style={{ color: 'var(--pr)' }}>{sag.maegler_email || (kunde?.email ? `${kunde.email} (kundens email)` : '—')}</div></div>
+                {valgt?.telefon && <div><div style={L}>Telefon</div><div>{valgt.telefon}</div></div>}
+                {ukendt && !nyMaegler && (
+                  <button className="btn btn-outline btn-sm" style={{ marginTop: 6 }} onClick={gemSagensMaeglerPaaKunde}>+ Gem {sag.maegler_navn || 'mægleren'} i kundeprofilen</button>
+                )}
+              </div>
+            )
+          })()}
 
           <div className="card">
             <div className="section-hd">Opdater status</div>
