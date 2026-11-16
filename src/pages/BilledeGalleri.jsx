@@ -130,6 +130,10 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, mwEndpoint
         const { data } = await supabase.storage.from('sager').createSignedUrl(u.dropbox_path, 86400)
         if (data?.signedUrl) billeder.push({ navn: u.filnavn, url: data.signedUrl, tag: u.bruger_tag || 'Billede' })
       }
+      if (billeder.length < valgteBilleder.length) {
+        toast?.(`⚠ ${valgteBilleder.length - billeder.length} billeder kunne ikke hentes fra lageret og sendes ikke`, 'error')
+      }
+      if (billeder.length === 0) { setSending(false); return }
       const r = await fetch('/api/mindworking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,10 +147,19 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, mwEndpoint
           mw_secret: mwSecret || null
         })
       })
-      const result = await r.json()
+      const result = await r.json().catch(() => ({ error: `Serveren svarede ${r.status}` }))
       if (result.success) {
-        toast?.(`✓ ${result.uploadet} af ${result.total} billeder uploadet til Mindworking!`)
-        setValgte(new Set())
+        const fejlede = (result.resultater || []).filter(x => !x.success)
+        if (fejlede.length) {
+          const forste = fejlede[0]?.error ? ` (${String(fejlede[0].error).slice(0, 140)})` : ''
+          toast?.(`⚠ ${result.uploadet} af ${result.total} billeder kom til Mindworking. ${fejlede.length} fejlede${forste}`, 'error')
+          console.error('Mindworking-fejl pr. billede:', fejlede)
+        } else {
+          toast?.(`✓ ${result.uploadet} af ${result.total} billeder uploadet til Mindworking-sag ${result.caseNo || mwNummer}`)
+        }
+        // Behold de fejlede markeret, så de kan sendes igen
+        const fejledeNavne = new Set(fejlede.map(x => x.navn))
+        setValgte(new Set(valgteBilleder.filter(u => fejledeNavne.has(u.filnavn)).map(u => u.id)))
         if (result.uploadet > 0) {
           // Gem at sagen er uploadet, så det kan vises som mærkat på sagen
           const mwData = { mindworking_uploadet_at: new Date().toISOString(), mindworking_uploadet_antal: result.uploadet }
@@ -155,7 +168,7 @@ export default function BilledeGalleri({ sagId, sagAdresse, mwNummer, mwEndpoint
           onMwUploadet?.(mwData)
         }
       } else {
-        toast?.('Fejl: ' + result.error, 'error')
+        toast?.('Mindworking fejl: ' + (result.error || `HTTP ${r.status}`), 'error')
       }
     } catch (e) {
       toast?.('Mindworking fejl: ' + e.message, 'error')

@@ -71,7 +71,14 @@ export default async function handler(req, res) {
     if (action === 'upload_billeder') {
       if (!caseNo || !billeder?.length) return res.status(400).json({ error: 'Mangler caseNo eller billeder' })
 
-      const kundeShopNo = shopNo || 'N260142'
+      // Nybolig-sagsnumre starter med butikkens shopNo (fx N2701920000739 → N270192).
+      // Brug prefixet når det findes, så en forkert/manglende shopNo på kunden ikke sender
+      // billederne forbi den rigtige butik. Kun ved standard Nybolig-endpoint.
+      const prefix = !mw_endpoint ? (String(caseNo).trim().match(/^(N\d{6})\d+$/i) || [])[1] : null
+      const kundeShopNo = (prefix && prefix.toUpperCase()) || shopNo || 'N260142'
+      if (prefix && shopNo && prefix.toUpperCase() !== String(shopNo).toUpperCase()) {
+        console.warn(`shopNo på kunden (${shopNo}) passer ikke med sagsnummeret (${caseNo}); bruger ${kundeShopNo}`)
+      }
       console.log('Søger sag:', caseNo, '| shopNo:', kundeShopNo, '| endpoint:', endpoint)
 
       const caseData = await gql(token, endpoint, `
@@ -80,7 +87,7 @@ export default async function handler(req, res) {
         }`, { shopNo: kundeShopNo, caseNo })
 
       const caseId = caseData.viewer.caseByCaseNo?.id
-      if (!caseId) return res.status(404).json({ error: `Sag ${caseNo} ikke fundet` })
+      if (!caseId) return res.status(404).json({ error: `Sag ${caseNo} ikke fundet i Mindworking (shopNo ${kundeShopNo})` })
       console.log('CaseId:', caseId)
 
       const resultater = []
@@ -100,7 +107,7 @@ export default async function handler(req, res) {
           const queryStr = JSON.stringify({
             query: `mutation uploadCaseMedia { createMedia(input: {
               caseId: "${caseId}",
-              description: "${billede.beskrivelse || ''}",
+              description: ${JSON.stringify(billede.beskrivelse || '')},
               mediaType: "${mediaType}",
               published: true,
               tags: ${JSON.stringify(billede.tag ? [billede.tag] : [])}
@@ -125,11 +132,17 @@ export default async function handler(req, res) {
           let mfJson
           try { mfJson = JSON.parse(mfText) } catch {}
 
-          if (mfJson?.data?.createMedia?.id) {
-            return { navn: billede.navn, success: true, mediaId: mfJson.data.createMedia.id }
+          const media = mfJson?.data?.createMedia
+          if (media?.id && !mfJson.errors) {
+            // Et media-id uden filnavn/URL betyder at MW oprettede en tom post uden selve billedet
+            if (!media.fileName && !media.resourceUrl) {
+              return { navn: billede.navn, success: false, mediaId: media.id, error: 'Mindworking oprettede posten, men uden billedfil' }
+            }
+            return { navn: billede.navn, success: true, mediaId: media.id, published: media.published }
           }
 
-          return { navn: billede.navn, success: false, error: mfText.slice(0, 200) }
+          const fejl = mfJson?.errors?.[0]?.message || (!mfR.ok ? `HTTP ${mfR.status}: ` : '') + mfText.slice(0, 200)
+          return { navn: billede.navn, success: false, error: fejl }
 
         } catch (e) {
           return { navn: billede.navn, success: false, error: e.message }
@@ -144,7 +157,10 @@ export default async function handler(req, res) {
         resultater.push(...batchResultater)
       }
 
-      return res.status(200).json({ success: true, resultater, total: resultater.length, uploadet: resultater.filter(r => r.success).length })
+      const uploadet = resultater.filter(r => r.success).length
+      const fejlede = resultater.filter(r => !r.success)
+      if (fejlede.length) console.error('Mindworking upload fejlede for', fejlede.length, 'billeder:', JSON.stringify(fejlede).slice(0, 1000))
+      return res.status(200).json({ success: true, caseNo, shopNo: kundeShopNo, caseId, resultater, total: resultater.length, uploadet, fejlede: fejlede.length })
     }
 
     res.status(400).json({ error: 'Ukendt action' })
