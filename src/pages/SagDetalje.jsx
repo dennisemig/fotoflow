@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 import BilledeGalleri from './BilledeGalleri'
+import SagMails from '../components/SagMails'
 import { gemKmForSag } from '../lib/km'
 import { hentMaeglere, gemMaegler, tilfoejMaeglerHvisNy, normEmail } from '../lib/maeglere'
 
@@ -464,6 +465,8 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
             <textarea value={noter} onChange={e => setNoter(e.target.value)} style={{ width: '100%', minHeight: 80, padding: 10, border: '1px solid var(--brd)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} placeholder="Skriv noter til sagen..." />
             <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={saveNoter} disabled={saving}>{saving ? 'Gemmer...' : 'Gem noter'}</button>
           </div>
+
+          <SagMails sag={sag} toast={toast} />
 
           <div className="card">
             <div className="section-hd">Filer & billeder</div>
