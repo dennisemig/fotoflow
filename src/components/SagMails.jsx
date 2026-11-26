@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { mailsForSag, hentSagerTilMatch, tilknyt } from '../lib/mail'
 import MailVisning, { fmtDato, navnAf } from './MailVisning'
+import NyMail from './NyMail'
 
 // Mails på en sag: dem der sikkert hører til (mægler med én aktiv sag, adresse i emne/tekst,
 // samme tråd, manuelt tilknyttet) og dem fra mægleren, der måske handler om en anden af dennes sager.
@@ -11,6 +12,7 @@ export default function SagMails({ sag, toast }) {
   const [åben, setÅben] = useState(null)
   const [sager, setSager] = useState([])
   const [antalVist, setAntalVist] = useState(5)
+  const [nyMail, setNyMail] = useState(false)
 
   async function hent() {
     setFejl(null)
@@ -48,7 +50,10 @@ export default function SagMails({ sag, toast }) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div className="section-hd" style={{ margin: 0 }}>✉ Mails {res ? `(${res.sikre.length})` : ''}</div>
-        <button className="btn btn-outline btn-sm" onClick={() => { setRes(null); hent() }} title="Opdatér">⟳</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => setNyMail(true)}>✉ Ny mail</button>
+          <button className="btn btn-outline btn-sm" onClick={() => { setRes(null); hent() }} title="Opdatér">⟳</button>
+        </div>
       </div>
       <div style={{ marginTop: 10 }}>
         {!res && !fejl && <div style={{ fontSize: 13, color: 'var(--muted)' }}>Søger i mails...</div>}
@@ -67,6 +72,11 @@ export default function SagMails({ sag, toast }) {
           </div>
         )}
       </div>
+
+      {nyMail && (
+        <NyMail sagId={sag.id} forvalg={{ til: sag.maegler_email || '', emne: (sag.adresse || '').split(',')[0] }}
+          onLuk={() => setNyMail(false)} onSendt={hent} toast={toast} />
+      )}
 
       {åben && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setÅben(null)}>
