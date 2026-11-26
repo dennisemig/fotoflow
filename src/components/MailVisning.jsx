@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { laesMail, sendMail, hentVedhaeftning, tilknyt, fjernFraSag, hentLinks } from '../lib/mail'
+import { laesMail, meldMailsAendret, sendMail, hentVedhaeftning, tilknyt, fjernFraSag, hentLinks } from '../lib/mail'
 import { matchMails, mailNoegle } from '../lib/mailMatch'
 import { signaturHtml } from '../../api/_lib/signatur.js'
 
@@ -117,7 +117,7 @@ export default function MailVisning({ mail, sager = [], sagId, minAdresse, onLuk
 
   useEffect(() => {
     setFuld(null); setFejl(null); setSvar(null); setVælgSag(false)
-    laesMail(mail.mappe, mail.uid).then(setFuld).catch(e => setFejl(e.message))
+    laesMail(mail.mappe, mail.uid).then(f => { setFuld(f); if (!mail.laest) meldMailsAendret() }).catch(e => setFejl(e.message))
     if (mail.messageId) hentLinks({ messageIds: [mail.messageId] }).then(setLinks)
     else setLinks([])
   }, [mail.mappe, mail.uid])

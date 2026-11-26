@@ -61,6 +61,12 @@ export default function Mails() {
 
   useEffect(() => { hent() }, [hent])
 
+  // Tjek for nye mails hvert minut, mens siden er åben og fanen er synlig
+  useEffect(() => {
+    const t = setInterval(() => { if (!document.hidden) hent({ stille: true }) }, 60000)
+    return () => clearInterval(t)
+  }, [hent])
+
   function sæt(nye) {
     setParams(p => {
       const ny = new URLSearchParams(p)
