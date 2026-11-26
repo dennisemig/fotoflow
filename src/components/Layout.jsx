@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
+import { hentUlaeste } from '../lib/mail'
 
 // Under denne bredde ligger menuen skjult og glider ind over indholdet, når man trykker ☰
 const MOBIL_BREDDE = 900
@@ -16,6 +17,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [afventerCount, setAfventerCount] = useState(0)
+  const [ulaesteMails, setUlaesteMails] = useState(0)
   const [mobil, setMobil] = useState(erMobil)
   // Computer: menuen kan foldes sammen til en smal ikon-bjælke (huskes i browseren)
   const [foldet, setFoldet] = useState(() => {
@@ -29,6 +31,23 @@ export default function Layout() {
     // Opdater hvert minut
     const interval = setInterval(fetchAfventerCount, 60000)
     return () => clearInterval(interval)
+  }, [])
+
+  // Ulæste mails i indbakken – tjekkes hvert minut, mens fanen er synlig.
+  // Er mail ikke sat op (eller er man freelancer), stoppes der stille.
+  useEffect(() => {
+    let stop = false
+    async function tjek() {
+      if (stop || document.hidden) return
+      try { setUlaesteMails((await hentUlaeste()).ulaeste) }
+      catch (e) { if (e.ikkeOpsat || /administrator|logget ind/i.test(e.message)) stop = true }
+    }
+    tjek()
+    const interval = setInterval(tjek, 60000)
+    const nu = () => tjek()
+    window.addEventListener('fotoflow-mails', nu)
+    document.addEventListener('visibilitychange', nu)
+    return () => { clearInterval(interval); window.removeEventListener('fotoflow-mails', nu); document.removeEventListener('visibilitychange', nu) }
   }, [])
 
   useEffect(() => {
@@ -76,7 +95,7 @@ export default function Layout() {
     { to: '/koersel', label: 'Kørselsrapport', icon: '🚗' },
     { to: '/pakker', label: 'Pakker & Tillæg', icon: '📦' },
     { to: '/bookinger', label: 'Bookinger', icon: '🔔', badge: afventerCount },
-    { to: '/mails', label: 'Mails', icon: '✉' },
+    { to: '/mails', label: 'Mails', icon: '✉', badge: ulaesteMails },
     { to: '/fakturaer', label: 'Fakturaer', icon: '🧾' },
   ]
 

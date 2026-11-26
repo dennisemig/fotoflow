@@ -286,6 +286,10 @@ export default async function handler(req, res) {
   try {
     const svar = await medImap(async klient => {
       switch (action) {
+        case 'ulaeste': {
+          const st = await klient.status('INBOX', { unseen: true })
+          return { ulaeste: st.unseen || 0 }
+        }
         case 'mapper': return { mapper: await mapper(klient), minAdresse: MAIL_USER.toLowerCase() }
         case 'liste': return { ...await liste(klient, req.query), minAdresse: MAIL_USER.toLowerCase() }
         case 'laes': return await laes(klient, req.query)

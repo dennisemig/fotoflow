@@ -19,6 +19,9 @@ async function kald(action, { query = {}, body } = {}) {
 }
 
 export const hentMapper = () => kald('mapper')
+export const hentUlaeste = () => kald('ulaeste')
+// Sendes når mails er læst/hentet, så tallet i menuen opdateres med det samme
+export const meldMailsAendret = () => window.dispatchEvent(new Event('fotoflow-mails'))
 export const hentListe = ({ mappe, side, q }) => kald('liste', { query: { mappe, side, q } })
 export const laesMail = (mappe, uid) => kald('laes', { query: { mappe, uid } })
 export const soegMails = kriterier => kald('soeg', { body: kriterier })
