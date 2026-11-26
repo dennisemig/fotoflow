@@ -14,11 +14,74 @@ export const fmtDato = d => {
 export const navnAf = a => a?.navn || a?.email || ''
 const fmtStr = b => b > 1024 * 1024 ? `${(b * 0.74 / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b * 0.74 / 1024))} KB`
 
+// Farver til citerede (ældre) mails i en tråd: skifter mellem to farver for hvert niveau
+const CITAT_FARVER = [
+  { bg: '#f1f6fa', kant: '#7f9bb3' },
+  { bg: '#fbf6ec', kant: '#d0a85c' },
+]
+
+// Outlook citerer ikke med <blockquote>, men indsætter en "Fra:/From:"-blok før den gamle mail.
+// Den blok og alt efter den pakkes ind i <blockquote>, så alle tråde ser ens ud.
+function pakOutlookCitater(doc) {
+  const markører = [...doc.querySelectorAll('#divRplyFwdMsg, div[id^="divRplyFwdMsg"], div[style*="border-top"]')]
+    .filter(el => el.id?.startsWith('divRplyFwdMsg') || /^\s*(fra|from|sendt|sent)\s*:/i.test(el.textContent || ''))
+    .filter(el => !el.closest('blockquote'))
+  for (const m of markører.reverse()) {
+    // Outlook lægger ofte markøren i en ekstra <div> – start fra det øverste element under body/forælderen
+    let start = m
+    while (start.parentElement && start.parentElement !== doc.body && !start.previousElementSibling && start.parentElement.tagName === 'DIV') start = start.parentElement
+    const forælder = start.parentElement
+    if (!forælder) continue
+    const bq = doc.createElement('blockquote')
+    let n = start
+    while (n) { const næste = n.nextSibling; bq.appendChild(n); n = næste }
+    forælder.appendChild(bq)
+  }
+}
+
 function htmlDokument(html) {
+  let krop = html
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    pakOutlookCitater(doc)
+    krop = doc.body.innerHTML
+  } catch {}
+  const niveauer = Array.from({ length: 8 }, (_, i) => {
+    const f = CITAT_FARVER[i % 2]
+    return `${Array(i + 1).fill('blockquote').join(' ')}{background:${f.bg}!important;border-left:3px solid ${f.kant}!important}`
+  }).join('\n')
   // Scripts er slået fra af sandbox; links åbner i ny fane
   return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">
-<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#222;margin:0;padding:4px;word-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}</style>
-</head><body>${html}</body></html>`
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#222;margin:0;padding:4px;word-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}
+blockquote{margin:12px 0 4px!important;padding:10px 14px!important;border-radius:8px}
+${niveauer}</style>
+</head><body>${krop}</body></html>`
+}
+
+// Ren tekst: linjer med ">" grupperes efter citatniveau og farves som i html
+function TekstMedCitater({ tekst }) {
+  const blokke = []
+  for (const linje of (tekst || '(ingen tekst)').split('\n')) {
+    const m = linje.match(/^((?:\s*>)+)\s?/)
+    const niveau = m ? (m[1].match(/>/g) || []).length : 0
+    const indhold = m ? linje.slice(m[0].length) : linje
+    const sidste = blokke[blokke.length - 1]
+    if (sidste && sidste.niveau === niveau) sidste.linjer.push(indhold)
+    else blokke.push({ niveau, linjer: [indhold] })
+  }
+  return (
+    <div style={{ fontSize: 14, padding: 12, background: 'var(--surf)', border: '.5px solid var(--brd)', borderRadius: 8 }}>
+      {blokke.map((b, i) => {
+        const f = b.niveau ? CITAT_FARVER[(b.niveau - 1) % 2] : null
+        return (
+          <pre key={i} style={{
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', margin: f ? `6px 0 6px ${Math.min(b.niveau - 1, 4) * 12}px` : 0,
+            ...(f ? { background: f.bg, borderLeft: `3px solid ${f.kant}`, padding: '8px 12px', borderRadius: 8 } : {})
+          }}>{b.linjer.join('\n')}</pre>
+        )
+      })}
+    </div>
+  )
 }
 
 function citat(mail) {
@@ -209,7 +272,7 @@ export default function MailVisning({ mail, sager = [], sagId, minAdresse, onLuk
       {fuld && (fuld.html
         ? <iframe title="Mail" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={htmlDokument(fuld.html)}
             style={{ width: '100%', height: '65vh', border: '.5px solid var(--brd)', borderRadius: 8, background: '#fff' }} />
-        : <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', fontSize: 14, margin: 0, padding: 12, background: 'var(--bg)', borderRadius: 8 }}>{fuld.tekst || '(ingen tekst)'}</pre>)}
+        : <TekstMedCitater tekst={fuld.tekst} />)}
     </div>
   )
 }
