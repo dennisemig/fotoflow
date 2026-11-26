@@ -55,6 +55,10 @@ export default function Bookinger() {
       maegler_sagsnummer: booking.sagsnummer || null,
       pakke: booking.pakke || null,
       tillaeg: booking.tillaeg || [],
+      // "VANIA kontakter sælger" → sagen kommer på kontaktlisten indtil der er sat dato
+      kontakt_selger: !!booking.kontakt_selger,
+      selger_navn: booking.selger_navn || null,
+      selger_telefon: booking.selger_telefon || null,
     }]).select().single()
 
     if (error) { toast('Fejl ved oprettelse af sag: ' + error.message, 'error'); return }
@@ -86,7 +90,9 @@ export default function Bookinger() {
       })
     }).catch(() => {})
 
-    toast('✓ Booking godkendt – sag oprettet og bekræftelsesmail sendt!')
+    toast(booking.kontakt_selger
+      ? '✓ Booking godkendt – sagen er sat på listen "Sælgere der skal kontaktes"'
+      : '✓ Booking godkendt – sag oprettet og bekræftelsesmail sendt!')
     fetchBookinger()
   }
 

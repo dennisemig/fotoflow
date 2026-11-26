@@ -6,6 +6,7 @@ import BilledeGalleri from './BilledeGalleri'
 import SagMails from '../components/SagMails'
 import { gemKmForSag } from '../lib/km'
 import { hentMaeglere, gemMaegler, tilfoejMaeglerHvisNy, normEmail } from '../lib/maeglere'
+import { venterPaaSelger, skalKontaktes, markerSelgerKontaktet } from '../lib/selger'
 
 const TYPES = ['ejendom', 'portræt', 'bryllup', 'event', 'mode', 'produkt']
 // Kan bruges som egen side (/sager/:id) eller indlejret i højre halvdel af Sager-listen
@@ -135,11 +136,19 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
 
   async function saveEdit() {
     setSaving(true)
-    await supabase.from('sager').update({ adresse: editForm.adresse, dato: editForm.dato, tidspunkt: editForm.tidspunkt || null, tidspunkt_slut: editForm.tidspunkt_slut || null, type: editForm.type, maks_billeder: editForm.maks_billeder, kunde_id: editForm.kunde_id || null, freelancer_id: editForm.freelancer_id || null }).eq('id', id)
+    await supabase.from('sager').update({ adresse: editForm.adresse, dato: editForm.dato || null, tidspunkt: editForm.tidspunkt || null, tidspunkt_slut: editForm.tidspunkt_slut || null, type: editForm.type, maks_billeder: editForm.maks_billeder, kunde_id: editForm.kunde_id || null, freelancer_id: editForm.freelancer_id || null }).eq('id', id)
     onChanged?.()
     // Ny adresse → ny km til kørselsrapporten
     if (editForm.adresse !== sag.adresse) await gemKmForSag(id, editForm.adresse)
     setSaving(false); setEditing(false); fetchSag(); toast('✓ Sag opdateret')
+  }
+  async function toggleSelgerKontaktet() {
+    try {
+      const selger_kontaktet_at = await markerSelgerKontaktet(id, !sag.selger_kontaktet_at)
+      setSag(s => ({ ...s, selger_kontaktet_at }))
+      onChanged?.()
+      toast(selger_kontaktet_at ? '✓ Sælger markeret som kontaktet' : 'Sat tilbage på kontaktlisten')
+    } catch (e) { toast('Kunne ikke gemme: ' + e.message, 'error') }
   }
   async function saveNoter() { setSaving(true); await supabase.from('sager').update({ noter }).eq('id', id); setSaving(false); onChanged?.(); toast('✓ Noter gemt') }
   async function saveMwNummer() { await supabase.from('sager').update({ maegler_sagsnummer: mwNummer }).eq('id', id); setSag(s => ({ ...s, maegler_sagsnummer: mwNummer })); onChanged?.(); toast('✓ Gemt') }
@@ -230,6 +239,27 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
         )}
       </div>
 
+      {/* Booking hvor VANIA skal kontakte sælger, og der er endnu ikke sat dato */}
+      {venterPaaSelger(sag) && (
+        <div className="card" style={{ marginBottom: 16, background: skalKontaktes(sag) ? '#fdf3e1' : '#f4f6f8', border: `1px solid ${skalKontaktes(sag) ? '#e5a243' : 'var(--brd)'}` }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
+            📞 Ingen dato – {skalKontaktes(sag) ? 'kontakt sælger' : 'sælger kontaktet, afventer svar'}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
+            Mægleren har valgt at VANIA kontakter sælger for at aftale tid.
+            {sag.selger_kontaktet_at && <> Markeret kontaktet {new Date(sag.selger_kontaktet_at).toLocaleString('da-DK', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.</>}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 14, marginRight: 6 }}>👤 <b>{sag.selger_navn || 'Intet navn'}</b></div>
+            {sag.selger_telefon
+              ? <a href={`tel:${sag.selger_telefon.replace(/\s/g, '')}`} className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>📞 {sag.selger_telefon}</a>
+              : <span style={{ fontSize: 12, color: 'var(--muted)' }}>Intet telefonnummer</span>}
+            <button className="btn btn-green btn-sm" onClick={() => setEditing(true)}>📅 Sæt dato</button>
+            <button className="btn btn-outline btn-sm" onClick={toggleSelgerKontaktet}>{sag.selger_kontaktet_at ? '↺ Sæt på kontaktlisten igen' : '✓ Sælger kontaktet'}</button>
+          </div>
+        </div>
+      )}
+
       {editing && (
         <div className="card" style={{ marginBottom: 16, border: '2px solid var(--pr)' }}>
           <div className="section-hd">Rediger sag</div>
@@ -261,6 +291,8 @@ export default function SagDetalje({ sagId, embedded = false, onClose, onChanged
                 { lbl: 'Tidspunkt', val: sag.tidspunkt ? `${String(sag.tidspunkt).slice(0,5)}${sag.tidspunkt_slut ? ` – ${String(sag.tidspunkt_slut).slice(0,5)}` : ''}` : '—' },
                 { lbl: 'Type', val: sag.type || '—' },
                 { lbl: 'Maks billeder', val: sag.maks_billeder || 20 },
+                ...(sag.kontakt_selger && sag.dato && (sag.selger_navn || sag.selger_telefon)
+                  ? [{ lbl: 'Sælger', val: [sag.selger_navn, sag.selger_telefon].filter(Boolean).join(' · ') }] : []),
               ].map((r, i) => (
                 <div key={i}>
                   <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>{r.lbl}</div>
