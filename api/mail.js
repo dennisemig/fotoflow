@@ -12,6 +12,7 @@ import { ImapFlow } from 'imapflow'
 import nodemailer from 'nodemailer'
 import MailComposer from 'nodemailer/lib/mail-composer/index.js'
 import { kraevAdminLogin } from './_lib/mail-login.js'
+import { mailHtml, mailTekst } from './_lib/signatur.js'
 
 export const config = { maxDuration: 30 }
 
@@ -223,11 +224,11 @@ async function vedhaeftning(klient, res, { mappe = 'INBOX', uid, part }) {
   } finally { lock.release() }
 }
 
-async function send(klient, { til, cc, emne, tekst, inReplyTo, references }) {
+async function send(klient, { til, cc, emne, tekst, citatIntro, citatTekst, inReplyTo, references }) {
   const modtagere = String(til || '').split(/[,;]/).map(s => s.trim()).filter(Boolean)
   const ccListe = String(cc || '').split(/[,;]/).map(s => s.trim()).filter(Boolean)
   if (!modtagere.length) throw Object.assign(new Error('Modtager mangler'), { status: 400 })
-  if (!String(tekst || '').trim()) throw Object.assign(new Error('Beskeden er tom'), { status: 400 })
+  if (!String(tekst || '').trim() && !String(citatTekst || '').trim()) throw Object.assign(new Error('Beskeden er tom'), { status: 400 })
 
   const domæne = (MAIL_USER.split('@')[1] || 'vaniagraphics.dk')
   const messageId = `<${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}@${domæne}>`
@@ -235,7 +236,10 @@ async function send(klient, { til, cc, emne, tekst, inReplyTo, references }) {
   const opts = {
     from: { name: MAIL_NAVN, address: MAIL_USER },
     to: modtagere, cc: ccListe.length ? ccListe : undefined,
-    subject: emne || '', text: tekst, messageId,
+    subject: emne || '',
+    text: mailTekst({ tekst, citatIntro, citatTekst }),
+    html: mailHtml({ tekst, citatIntro, citatTekst, appUrl: process.env.VITE_APP_URL }),
+    messageId,
     inReplyTo: inReplyTo || undefined,
     references: refs.length ? refs.join(' ') : undefined,
     date: new Date()

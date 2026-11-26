@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { laesMail, sendMail, hentVedhaeftning, tilknyt, fjernFraSag, hentLinks } from '../lib/mail'
 import { matchMails, mailNoegle } from '../lib/mailMatch'
+import { signaturHtml } from '../../api/_lib/signatur.js'
 
 export const fmtDato = d => {
   if (!d) return ''
@@ -84,10 +85,18 @@ function TekstMedCitater({ tekst }) {
   )
 }
 
-function citat(mail) {
-  const linjer = (mail.tekst || '').trim().split('\n').map(l => `> ${l}`).join('\n')
+// Mailens tekst – fra tekstdelen, ellers trukket ud af html
+function rentTekst(mail) {
+  if (mail.tekst?.trim()) return mail.tekst
+  try {
+    const doc = new DOMParser().parseFromString((mail.html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|li|h\d)>/gi, '\n'), 'text/html')
+    return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim()
+  } catch { return '' }
+}
+
+function citatIntro(mail) {
   const dato = mail.dato ? new Date(mail.dato).toLocaleString('da-DK', { dateStyle: 'long', timeStyle: 'short' }) : ''
-  return `\n\n\nDen ${dato} skrev ${navnAf(mail.fra)}:\n${linjer}`
+  return `Den ${dato} skrev ${navnAf(mail.fra)} <${mail.fra?.email}>:`
 }
 
 /**
@@ -128,18 +137,22 @@ export default function MailVisning({ mail, sager = [], sagId, minAdresse, onLuk
     const til = fraMig ? m.til.map(a => a.email) : [m.fra.email]
     const cc = alle ? [...m.til, ...m.cc].map(a => a.email).filter(e => e && e !== mig && !til.includes(e)) : []
     const emne = /^(re|sv)\s*:/i.test(m.emne) ? m.emne : `Re: ${m.emne}`
-    setSvar({ til: til.join(', '), cc: cc.join(', '), emne, tekst: citat(m) })
+    setSvar({ til: til.join(', '), cc: cc.join(', '), emne, tekst: '', citatIntro: citatIntro(m), citatTekst: rentTekst(m) })
   }
 
   function videresend() {
-    setSvar({ til: '', cc: '', emne: `Fwd: ${m.emne}`, tekst: `\n\n\n---------- Videresendt mail ----------\nFra: ${navnAf(m.fra)} <${m.fra?.email}>\nDato: ${new Date(m.dato).toLocaleString('da-DK')}\nEmne: ${m.emne}\n\n${m.tekst || ''}`, videresend: true })
+    setSvar({
+      til: '', cc: '', emne: `Fwd: ${m.emne}`, tekst: '', videresend: true,
+      citatIntro: `---------- Videresendt mail ----------\nFra: ${navnAf(m.fra)} <${m.fra?.email}>\nDato: ${new Date(m.dato).toLocaleString('da-DK')}\nEmne: ${m.emne}`,
+      citatTekst: rentTekst(m)
+    })
   }
 
   async function send() {
     setSender(true)
     try {
       const r = await sendMail({
-        til: svar.til, cc: svar.cc, emne: svar.emne, tekst: svar.tekst,
+        til: svar.til, cc: svar.cc, emne: svar.emne, tekst: svar.tekst, citatIntro: svar.citatIntro, citatTekst: svar.citatTekst,
         inReplyTo: svar.videresend ? undefined : m.messageId,
         references: svar.videresend ? undefined : [...(m.references || []), m.messageId].filter(Boolean)
       })
@@ -245,9 +258,18 @@ export default function MailVisning({ mail, sager = [], sagId, minAdresse, onLuk
           <div className="form-group" style={{ marginBottom: 8 }}><label>Cc</label><input value={svar.cc} onChange={e => setSvar(s => ({ ...s, cc: e.target.value }))} /></div>
           <div className="form-group" style={{ marginBottom: 8 }}><label>Emne</label><input value={svar.emne} onChange={e => setSvar(s => ({ ...s, emne: e.target.value }))} /></div>
           <textarea autoFocus value={svar.tekst} onChange={e => setSvar(s => ({ ...s, tekst: e.target.value }))}
-            style={{ width: '100%', minHeight: 200, padding: 10, border: '1px solid var(--brd)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+            placeholder="Skriv din besked..."
+            style={{ width: '100%', minHeight: 160, padding: 10, border: '1px solid var(--brd)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+          {/* Signaturen sættes på af serveren – her vises den bare */}
+          <div style={{ padding: '4px 10px 0', transform: 'scale(.9)', transformOrigin: 'left top' }} dangerouslySetInnerHTML={{ __html: signaturHtml({ appUrl: window.location.origin }) }} />
+          {svar.citatTekst && (
+            <details style={{ marginTop: 6, fontSize: 12, color: 'var(--muted)' }}>
+              <summary style={{ cursor: 'pointer' }}>{svar.videresend ? 'Den videresendte mail kommer med' : 'Den tidligere mail citeres nedenunder'}</summary>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: '6px 0 0', padding: '8px 12px', borderLeft: '3px solid var(--brd)', maxHeight: 200, overflow: 'auto' }}>{svar.citatIntro}{'\n'}{svar.citatTekst}</pre>
+            </details>
+          )}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button className="btn btn-green" onClick={send} disabled={sender || !svar.til.trim()}>{sender ? 'Sender...' : '✉ Send'}</button>
+            <button className="btn btn-green" onClick={send} disabled={sender || !svar.til.trim() || !(svar.tekst.trim() || svar.citatTekst)}>{sender ? 'Sender...' : '✉ Send'}</button>
             <button className="btn btn-outline" onClick={() => setSvar(null)}>Annuller</button>
           </div>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Sendes fra {minAdresse || 'din mail'} og gemmes i Sendt post.</div>
