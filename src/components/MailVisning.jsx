@@ -17,7 +17,7 @@ const fmtStr = b => b > 1024 * 1024 ? `${(b * 0.74 / 1024 / 1024).toFixed(1)} MB
 // Farver til citerede (ældre) mails i en tråd: skifter mellem to farver for hvert niveau
 const CITAT_FARVER = [
   { bg: '#f1f6fa', kant: '#7f9bb3' },
-  { bg: '#fbf6ec', kant: '#d0a85c' },
+  { bg: '#f4f4f3', kant: '#b3b3b0' },
 ]
 
 // Outlook citerer ikke med <blockquote>, men indsætter en "Fra:/From:"-blok før den gamle mail.
