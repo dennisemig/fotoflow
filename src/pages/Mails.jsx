@@ -4,6 +4,7 @@ import { useToast, ToastContainer } from '../hooks/useToast'
 import { hentMapper, hentListe, hentLinks, hentSagerTilMatch } from '../lib/mail'
 import { matchMails, mailNoegle, deltagere } from '../lib/mailMatch'
 import MailVisning, { fmtDato, navnAf } from '../components/MailVisning'
+import NyMail from '../components/NyMail'
 
 const DELT_MIN_BREDDE = 1100
 
@@ -29,6 +30,7 @@ export default function Mails() {
   const [sager, setSager] = useState([])
   const [links, setLinks] = useState([])
   const [valgt, setValgt] = useState(null)
+  const [nyMail, setNyMail] = useState(false)
   const [bred, setBred] = useState(() => window.innerWidth >= DELT_MIN_BREDDE)
   const { toasts, toast } = useToast()
 
@@ -179,7 +181,13 @@ IMAP_HOST = cp17.nordicway.dk`}</pre>
   return (
     <div>
       <ToastContainer toasts={toasts} />
-      {!(valgt && !bred) && <div className="page-title">Mails</div>}
+      {!(valgt && !bred) && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+          <div className="page-title">Mails</div>
+          <button className="btn btn-primary" style={{ marginBottom: 20 }} onClick={() => setNyMail(true)}>✉ Ny mail</button>
+        </div>
+      )}
+      {nyMail && <NyMail onLuk={() => setNyMail(false)} onSendt={() => hent({ stille: true })} toast={toast} />}
       {bred
         ? <div style={{ display: 'grid', gridTemplateColumns: valgt ? 'minmax(320px, 1fr) minmax(0, 1.4fr)' : '1fr', gap: 16, alignItems: 'start' }}>
             {liste}
