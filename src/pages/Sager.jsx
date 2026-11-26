@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useToast, ToastContainer } from '../hooks/useToast'
 import { beregnKm } from '../lib/km'
 import SagDetalje from './SagDetalje'
+import { selgerFelter, venterPaaSelger, skalKontaktes, selgerLabel } from '../lib/selger'
 
 // Statusser som sager kan have (samme som i SagDetalje). Sager uden status vises som "Ny".
 const STATUSSER = [
@@ -16,6 +17,16 @@ const STATUSSER = [
 const statusAf = s => s.status || 'ny'
 // Tillæg gemmes som navne på sagen. Matcher fx "Nøgleafhentning", "Afhentning af nøgle", "Noegle"
 const harNoegleTillaeg = s => (s.tillaeg || []).some(t => /n(ø|o|oe)gle/i.test(t || ''))
+// Mærkat i dato-feltet for sager uden dato, hvor VANIA skal kontakte sælger
+function SelgerMaerkat({ sag }) {
+  const kontakt = skalKontaktes(sag)
+  return (
+    <span title={[sag.selger_navn, sag.selger_telefon].filter(Boolean).join(' · ') || undefined}
+      style={{ display: 'inline-block', background: kontakt ? '#fdf3e1' : '#eef2f6', color: kontakt ? '#8a5a12' : 'var(--muted)', border: `1px solid ${kontakt ? '#e5a243' : 'var(--brd)'}`, borderRadius: 20, padding: '1px 9px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
+      📞 {selgerLabel(sag)}
+    </span>
+  )
+}
 // Under denne bredde er der ikke plads til delt visning, så "Se sag" åbner sagen på egen side
 const DELT_VISNING_MIN_BREDDE = 1100
 
@@ -32,6 +43,7 @@ export default function Sager() {
   const [params, setParams] = useSearchParams()
   const statusFilter = params.get('status') || ''
   const valgtId = params.get('sag') || ''
+  const kontaktFilter = params.get('kontakt') === '1'
   const navigate = useNavigate()
   const { toasts, toast } = useToast()
 
@@ -53,10 +65,13 @@ export default function Sager() {
 
   async function fetchSager({ stille = false } = {}) {
     if (!stille) setLoading(true)
-    const { data: sagerData, error } = await supabase
+    const kolonner = 'id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer, noter, tillaeg'
+    let { data: sagerData, error } = await supabase
       .from('sager')
-      .select('id, adresse, dato, status, type, kunde_id, freelancer_id, created_at, maegler_navn, maegler_email, maegler_firma, maegler_sagsnummer, noter, tillaeg')
+      .select(`${kolonner}, ${selgerFelter}`)
       .order('dato', { ascending: false })
+    // Sælger-kolonnerne findes ikke før supabase-kontakt-selger.sql er kørt → hent uden dem
+    if (error) ({ data: sagerData, error } = await supabase.from('sager').select(kolonner).order('dato', { ascending: false }))
 
     if (error) { console.error('Sager fejl:', error); setLoading(false); return }
     if (!sagerData || sagerData.length === 0) { setSager([]); setLoading(false); return }
@@ -90,7 +105,10 @@ export default function Sager() {
     return søgMatch && datoMatch && maanedMatch
   })
   const antalPrStatus = filtered.reduce((acc, s) => { acc[statusAf(s)] = (acc[statusAf(s)] || 0) + 1; return acc }, {})
-  const vist = statusFilter ? filtered.filter(s => statusAf(s) === statusFilter) : filtered
+  const antalKontakt = filtered.filter(skalKontaktes).length
+  const vist = filtered
+    .filter(s => !statusFilter || statusAf(s) === statusFilter)
+    .filter(s => !kontaktFilter || skalKontaktes(s))
   const delt = !!valgtId
 
   const badgeClass = s => ({ aktiv: 'active', afventer: 'pending', leveret: 'leveret', ny: 'new', afsluttet: 'done' }[s] || 'new')
@@ -131,6 +149,12 @@ export default function Sager() {
             </button>
           )
         })}
+        {(antalKontakt > 0 || kontaktFilter) && (
+          <button className={`btn btn-sm ${kontaktFilter ? 'btn-primary' : 'btn-outline'}`} onClick={() => sætParam('kontakt', kontaktFilter ? '' : '1')}
+            title="Sager uden dato hvor VANIA skal kontakte sælger">
+            📞 Kontakt sælger <span style={{ opacity: .7, marginLeft: 2 }}>({antalKontakt})</span>
+          </button>
+        )}
       </div>
       <div style={delt ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' } : undefined}>
       <div className="card">
@@ -152,7 +176,7 @@ export default function Sager() {
                   <span className={`badge badge-${badgeClass(s.status)}`} style={{ flexShrink: 0 }}>{statusLabel(s.status)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>
-                  {s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Ingen dato'}
+                  {s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' }) : venterPaaSelger(s) ? <SelgerMaerkat sag={s} /> : 'Ingen dato'}
                   {' · '}{s.kunde?.navn || s.maegler_navn || '—'}
                   {s.freelancer?.navn && <> · 📷 {s.freelancer.navn}</>}
                 </div>
@@ -189,7 +213,7 @@ export default function Sager() {
                       )}
                     </td>
                     {!delt && <td style={{ fontSize: 12, color: 'var(--muted)' }}>{s.maegler_sagsnummer || '—'}</td>}
-                    <td style={{ whiteSpace: 'nowrap' }}>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : '—'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{s.dato ? new Date(s.dato + 'T12:00:00').toLocaleDateString('da-DK') : venterPaaSelger(s) ? <SelgerMaerkat sag={s} /> : '—'}</td>
                     {!delt && <td style={{ textTransform: 'capitalize' }}>{s.type || '—'}</td>}
                     {!delt && <td>{s.freelancer?.navn || <span style={{ color: 'var(--muted)', fontSize: 12 }}>Ingen</span>}</td>}
                     <td><span className={`badge badge-${badgeClass(s.status)}`}>{statusLabel(s.status)}</span></td>

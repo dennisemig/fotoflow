@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { hentKontaktliste, markerSelgerKontaktet } from '../lib/selger'
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ sager: 0, kunder: 0, freelancere: 0, kommende: 0 })
   const [recentSager, setRecentSager] = useState([])
   const [todos, setTodos] = useState([])
   const [newTodo, setNewTodo] = useState('')
+  const [kontaktliste, setKontaktliste] = useState([])
   const [calSager, setCalSager] = useState([])
   const [calYear, setCalYear] = useState(new Date().getFullYear())
   const [calMonth, setCalMonth] = useState(new Date().getMonth())
@@ -19,18 +21,20 @@ export default function Dashboard() {
   async function fetchAll() {
     const [
       { count: s }, { count: k }, { count: f }, { count: kom },
-      { data: sager }, { data: td }
+      { data: sager }, { data: td }, kl
     ] = await Promise.all([
       supabase.from('sager').select('*', { count: 'exact', head: true }),
       supabase.from('kunder').select('*', { count: 'exact', head: true }),
       supabase.from('freelancere').select('*', { count: 'exact', head: true }).eq('aktiv', true),
       supabase.from('sager').select('*', { count: 'exact', head: true }).gte('dato', today),
       supabase.from('sager').select('id, adresse, dato, status').order('created_at', { ascending: false }).limit(5),
-      supabase.from('todos').select('*').eq('done', false).order('created_at', { ascending: false }).limit(8)
+      supabase.from('todos').select('*').eq('done', false).order('created_at', { ascending: false }).limit(8),
+      hentKontaktliste()
     ])
     setStats({ sager: s || 0, kunder: k || 0, freelancere: f || 0, kommende: kom || 0 })
     setRecentSager(sager || [])
     setTodos(td || [])
+    setKontaktliste(kl)
   }
 
   async function fetchCalSager() {
@@ -46,6 +50,13 @@ export default function Dashboard() {
     const { data } = await supabase.from('todos').insert([{ tekst: newTodo, prioritet: 'med', type: 'generel', done: false }]).select().single()
     if (data) setTodos(t => [data, ...t])
     setNewTodo('')
+  }
+
+  async function selgerKontaktet(id) {
+    try {
+      await markerSelgerKontaktet(id)
+      setKontaktliste(l => l.filter(x => x.id !== id))
+    } catch (e) { alert('Kunne ikke gemme: ' + e.message) }
   }
 
   async function toggleTodo(id, done) {
@@ -116,6 +127,33 @@ const sagsForDay = day => {
             }
             <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => navigate('/sager')}>+ Opret ny sag</button>
           </div>
+
+          {/* SÆLGERE DER SKAL KONTAKTES (sager fra bookinger med "VANIA kontakter sælger" uden dato) */}
+          {kontaktliste.length > 0 && (
+            <div className="card" style={{ borderLeft: '4px solid var(--gold)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div className="section-hd" style={{ margin: 0 }}>📞 Sælgere der skal kontaktes ({kontaktliste.length})</div>
+                <button className="btn btn-outline btn-sm" onClick={() => navigate('/sager?kontakt=1')}>Se i sager</button>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Godkendte sager uden dato. Forsvinder når der er sat dato, eller du markerer sælger som kontaktet.</div>
+              {kontaktliste.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '9px 0', borderBottom: '.5px solid var(--brd)' }}>
+                  <div style={{ flex: '1 1 180px', minWidth: 0, cursor: 'pointer' }} onClick={() => navigate(`/sager/${s.id}`)}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{s.adresse || '—'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                      👤 {s.selger_navn || 'Sælger (intet navn)'}
+                      {s.maegler_navn && <> · mægler {s.maegler_navn}{s.maegler_firma ? ` (${s.maegler_firma})` : ''}</>}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>Godkendt {new Date(s.created_at).toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}</div>
+                  </div>
+                  {s.selger_telefon
+                    ? <a href={`tel:${s.selger_telefon.replace(/\s/g, '')}`} className="btn btn-primary btn-sm" style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}>📞 {s.selger_telefon}</a>
+                    : <span style={{ fontSize: 12, color: 'var(--muted)' }}>Intet tlf.</span>}
+                  <button className="btn btn-outline btn-sm" title="Markér sælger som kontaktet" onClick={() => selgerKontaktet(s.id)}>✓ Kontaktet</button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* TO-DO */}
           <div className="card">
